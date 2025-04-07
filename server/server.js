@@ -1,154 +1,189 @@
-// Importer les modules nécessaires (syntaxe ES Module)
-import axios from 'axios';
-import { PdfReader } from 'pdfreader';
-import multer from 'multer';
+// === IMPORTS ===
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import multer from 'multer';
+import axios from 'axios';
+import { PdfReader } from 'pdfreader'; // Utiliser pdfreader
 
-// Charger les variables d'environnement depuis le fichier .env (s'il existe)
-dotenv.config();
-const configOutput = dotenv.config(); // Récupère le résultat de config()
+// === CONFIGURATION & SETUP ===
+dotenv.config(); // Charger .env dès que possible
 
-// Charger et vérifier la clé API ElevenLabs depuis .env
+// Vérifier et charger les variables d'environnement
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
+const ELEVENLABS_VOICE_ID = process.env.ELEVENLABS_VOICE_ID;
+
 if (!ELEVENLABS_API_KEY) {
   console.error('Erreur: Clé API ElevenLabs (ELEVENLABS_API_KEY) manquante dans le fichier .env');
-  process.exit(1); // Arrête le serveur si la clé est manquante
+  process.exit(1);
 }
-
-// Charger et vérifier l'ID de la voix depuis .env
-const ELEVENLABS_VOICE_ID = process.env.ELEVENLABS_VOICE_ID;
 if (!ELEVENLABS_VOICE_ID) {
   console.error('Erreur: ID de Voix ElevenLabs (ELEVENLABS_VOICE_ID) manquant dans le fichier .env');
-  process.exit(1); // Arrête le serveur si l'ID est manquant
+  process.exit(1);
 }
+
+// Construire l'URL de l'API ElevenLabs dynamiquement
+const ELEVENLABS_API_URL = `https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_VOICE_ID}/with-timestamps`;
 
 // Créer l'application Express
 const app = express();
-
-// Définir le port d'écoute
 const PORT = process.env.PORT || 5001;
 
-// === Middlewares ===
-app.use(cors()); // Activer CORS
-app.use(express.json()); // Activer le parsing JSON
-
-// Configuration Multer pour stocker le fichier PDF en mémoire tampon (buffer)
-const storage = multer.memoryStorage(); // Stocke dans req.file.buffer
-
+// Configuration Multer (pour upload PDF en mémoire)
+const storage = multer.memoryStorage();
 const upload = multer({
   storage: storage,
   fileFilter: (req, file, cb) => {
-    // Vérifier le type MIME du fichier
     if (file.mimetype === 'application/pdf') {
-      cb(null, true); // Accepter le fichier
+      cb(null, true); // Accepter PDF
     } else {
-      // Rejeter le fichier avec une erreur
-      cb(new Error('Type de fichier non supporté ! Seuls les PDF sont autorisés.'), false);
+      cb(new Error('Type de fichier non supporté ! Seuls les PDF sont autorisés.'), false); // Rejeter autres
     }
   },
-  limits: {
-    fileSize: 15 * 1024 * 1024 // Limiter la taille du fichier (ex: 15 Mo)
-  }
+  limits: { fileSize: 15 * 1024 * 1024 } // Limite 15MB
 });
 
-// === Routes ===
-// Route de test
-app.get('/', (req, res) => {
-  res.status(200).send('AudioDoc Visualizer Backend is running!');
-});
+// --- MIDDLEWARES GLOBAUX ---
+app.use(cors());       // Autoriser les requêtes cross-origin
+app.use(express.json()); // Permettre de parser les corps de requête JSON
 
-// Fonction helper pour extraire le texte d'un buffer PDF avec pdfreader
+// --- FONCTION HELPER PDF avec pdfreader ---
 function extractTextFromPdfBuffer(buffer) {
   return new Promise((resolve, reject) => {
     let pdfText = '';
+    // Traiter le buffer avec PdfReader
     new PdfReader().parseBuffer(buffer, (err, item) => {
       if (err) {
-        // Si pdfreader renvoie une erreur pendant le parsing
+        // Erreur pendant le parsing du PDF
         console.error("Erreur de parsing PDF avec pdfreader:", err);
-        reject(err); // Rejette la Promesse
+        reject(new Error('Erreur lors de l\'analyse du PDF.')); // Rejette la promesse
       } else if (!item) {
-        // Si item est null, c'est la fin du parsing
-        // console.log("Fin du parsing PDF (pdfreader)"); // Log optionnel
-        resolve(pdfText.trim()); // Résout la Promesse avec le texte accumulé (et nettoyé)
+        // Fin du fichier PDF ('item' est null)
+        resolve(pdfText.trim()); // Renvoie le texte accumulé et nettoyé
       } else if (item.text) {
-        // Si item est un élément texte, on l'ajoute
-        pdfText += item.text + " "; // Ajoute un espace pour séparer les mots/items
+        // Si 'item' contient du texte, on l'ajoute
+        pdfText += item.text + " "; // Ajoute un espace pour la lisibilité
       }
     });
   });
 }
 
-// Route pour gérer la génération audio (POST /api/generate)
-// upload.single('pdfFile') : Middleware multer pour gérer UN fichier uploadé dans le champ 'pdfFile'
+// --- ROUTES ---
+// Route GET de base
+app.get('/', (req, res) => {
+  res.status(200).send('AudioDoc Visualizer Backend is running!');
+});
+
+// Route POST principale pour générer l'audio
 app.post('/api/generate', upload.single('pdfFile'), async (req, res) => {
-  console.log('Requête reçue sur /api/generate'); // Pour le débogage
+  console.log('Requête reçue sur /api/generate');
 
   try {
-    let inputText = ''; // Variable pour stocker le texte à traiter
+    let inputText = '';
 
-    // Logique pour récupérer le texte :
-    // Cas 1 : Un fichier PDF a été uploadé
+    // --- 1. Récupération du texte ---
     if (req.file) {
       console.log(`Fichier PDF reçu: ${req.file.originalname}, taille: ${req.file.size} bytes`);
-      // Le contenu du fichier est dans req.file.buffer
-      // Extraire le texte du buffer PDF en utilisant pdf-parse
       console.log('Parsing PDF buffer with pdfreader...');
-      // Appelle notre fonction helper qui retourne une Promesse
-      inputText = await extractTextFromPdfBuffer(req.file.buffer);
-      console.log(`PDF Parsed with pdfreader! Text length: ${inputText.length}`);
-    }
-    // Cas 2 : Du texte brut a été envoyé dans le corps de la requête
-    else if (req.body && req.body.text) {
+      inputText = await extractTextFromPdfBuffer(req.file.buffer); // Utilise la fonction helper
+      console.log(`PDF Parsé avec pdfreader! Longueur texte: ${inputText.length}`);
+      // Nettoyage optionnel des espaces multiples (bonne pratique)
+      inputText = inputText.replace(/\s+/g, ' ').trim();
+      console.log(`Texte nettoyé (début): "${inputText.substring(0, 100)}..."`);
+    } else if (req.body && req.body.text) {
       console.log("Texte brut reçu.");
       inputText = req.body.text;
-    }
-    // Cas 3 : Ni fichier, ni texte n'ont été fournis
-    else {
-      console.error('Aucune donnée reçue (ni fichier PDF, ni texte).');
-      // On lève une erreur pour aller directement au bloc catch
-      // Le code 400 indique une mauvaise requête du client
+    } else {
       return res.status(400).json({ error: 'Aucun fichier PDF ou texte fourni.' });
     }
 
-    // Vérification simple que le texte n'est pas vide après récupération
-    if (!inputText || !inputText.trim()) {
+    // --- 2. Validation du texte ---
+    if (!inputText || !inputText.trim()) { // Re-vérifie après nettoyage potentiel
        console.error('Le texte extrait ou fourni est vide.');
        return res.status(400).json({ error: 'Le texte résultant est vide.' });
     }
 
-    // À ce stade, 'inputText' contient le texte à envoyer à ElevenLabs
-    console.log(`Texte préparé (début): "${inputText.substring(0, 100)}..."`);
+    // --- 3. Appel à l'API ElevenLabs ---
+    console.log(`Appel de l'API ElevenLabs pour la voix ${ELEVENLABS_VOICE_ID}...`);
+    const headers = {
+      'Accept': 'audio/mpeg',
+      'Content-Type': 'application/json',
+      'xi-api-key': ELEVENLABS_API_KEY,
+    };
+    const requestBody = {
+      text: inputText,
+      model_id: 'eleven_flash_v2_5', // <<<=== MODÈLE MIS À JOUR ICI
+      voice_settings: {
+        stability: 0.5, // Ajuste ces valeurs si tu veux expérimenter
+        similarity_boost: 0.75,
+      }
+    };
 
-    // TODO: Appeler l'API ElevenLabs avec inputText
-    // TODO: Récupérer la réponse audio (buffer)
-    // TODO: Renvoyer la réponse audio au client
+    // --- Logging Détaillé Avant Appel API ---
+    console.log('--- DEBUG: Calling ElevenLabs ---');
+    console.log('Using API Key (start):', ELEVENLABS_API_KEY ? ELEVENLABS_API_KEY.substring(0, 5) + '...' : 'KEY NOT FOUND!');
+    console.log('Using Voice ID:', ELEVENLABS_VOICE_ID);
+    console.log('Using Model ID:', requestBody.model_id); // Log du modèle utilisé
+    console.log('Sending Text (first 300 chars):', inputText ? inputText.substring(0, 300) : 'EMPTY!');
+    console.log('Sending Headers:', JSON.stringify(headers, null, 2));
+    console.log('---------------------------------');
+    // --- Fin du Logging Détaillé ---
 
-    // Réponse temporaire (placeholder) pour indiquer que la logique est en cours
-    res.status(200).json({
-      message: 'Données reçues, traitement ElevenLabs à implémenter.',
-      preview: inputText.substring(0, 200) + '...' // Renvoie un aperçu du texte reçu
+    // Envoi de la requête POST à ElevenLabs avec Axios
+    const response = await axios.post(ELEVENLABS_API_URL, requestBody, {
+      headers: headers
     });
 
-  } catch (error) {
-    // Gestion globale des erreurs pour cette route
-    console.error('Erreur dans /api/generate:', error.message);
-
-    // Si l'erreur vient de multer (ex: mauvais type de fichier, fichier trop gros)
-    if (error instanceof multer.MulterError) {
-        return res.status(400).json({ error: `Erreur d'upload: ${error.message}` });
-    } else if (error.message.includes('Type de fichier non supporté')) {
-         return res.status(400).json({ error: error.message });
+    // --- 4. Envoi de la Réponse JSON (avec audio et alignement) au Client ---
+    if (response.status === 200 && response.data && response.data.audio_base64 && response.data.alignment) {
+      console.log('Audio et alignement générés avec succès par ElevenLabs.');
+      // Renvoie directement l'objet JSON reçu d'ElevenLabs au frontend
+      // Il contient 'audio_base64' et 'alignment' (et potentiellement 'normalized_alignment')
+      res.status(200).json(response.data);
+    } else {
+      // Si la réponse, bien que 200, n'a pas le format attendu
+      console.error('Réponse 200 inattendue ou incomplète de l\'API ElevenLabs:', response.data);
+      throw new Error('Erreur lors de la récupération des données audio/alignement depuis l\'API externe.');
     }
 
-    // Pour les autres erreurs (parsing PDF, ElevenLabs, etc.)
-    // Le code 500 indique une erreur côté serveur
-    res.status(500).json({ error: error.message || 'Une erreur interne est survenue.' });
+  } catch (error) {
+    // --- 5. Gestion des Erreurs ---
+    console.error('Erreur détaillée dans /api/generate:', error);
+
+    if (error.response) { // Erreur venant de la réponse d'Axios (donc de l'API ElevenLabs)
+        const status = error.response.status || 500;
+        const detail = error.response.data?.detail; // Structure d'erreur courante chez ElevenLabs/FastAPI
+        let message = error.response.statusText || 'Erreur API externe';
+
+        // Essayer de parser les formats d'erreur d'ElevenLabs
+        if (status === 422) { // Erreur de validation spécifique (Unprocessable Entity)
+            message = "Erreur de validation des données envoyées à l'API TTS.";
+            if (Array.isArray(detail)) { message += ` Détail: ${detail[0]?.loc?.join('->')}: ${detail[0]?.msg}`; }
+            else if (typeof detail === 'string') { message += ` Détail: ${detail}`; }
+            // ... autres parsings d'erreur ...
+        } else if (typeof detail === 'string') { message = detail; }
+          else if (Array.isArray(detail) && detail[0]?.msg) { message = detail[0].msg; }
+          else if (typeof detail === 'object' && detail !== null && detail.message) { message = detail.message; }
+          // Si la réponse est un buffer (ça peut arriver pour certaines erreurs API), on ne peut pas lire le message facilement ici
+          else if (error.response.data instanceof ArrayBuffer || error.response.data instanceof Buffer) { message = `Erreur ${status} reçue de l'API (corps binaire)`; }
+
+        console.error(`Erreur API externe ${status}: ${message}`);
+        return res.status(status).json({ error: `Erreur API Externe: ${message}` });
+
+    } else if (error instanceof multer.MulterError || error.message.includes('Type de fichier non supporté')) {
+       // Erreur Multer (upload)
+       return res.status(400).json({ error: `Erreur d'upload: ${error.message}` });
+    } else if (error.message.includes('Erreur lors de l\'analyse du PDF')) {
+       // Erreur venant de notre helper pdfreader
+       return res.status(500).json({ error: error.message });
+    }
+
+    // Autre erreur interne non identifiée
+    return res.status(500).json({ error: error.message || 'Une erreur interne est survenue sur le serveur.' });
   }
 });
 
-// === Démarrage du serveur ===
+// --- DÉMARRAGE DU SERVEUR ---
 app.listen(PORT, () => {
-  console.log(`Server listening on http://localhost:${PORT}`);
+  console.log(`Serveur backend démarré et à l'écoute sur http://localhost:${PORT}`);
 });
