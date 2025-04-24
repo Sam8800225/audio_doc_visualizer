@@ -8,6 +8,12 @@ import LoadingIndicator from './components/LoadingIndicator';
 import MediaPlayer from './components/MediaPlayer';
 import ErrorMessage from './components/ErrorMessage';
 
+// Définit les vidéos disponibles
+const availableVideos = [
+  { name: 'Minecraft Relax', path: '/satisfying_video.mp4' },
+  { name: 'Subway Surf', path: '/subway.mp4' } // Assure-toi que le nom 'subway.mp4' est correct
+];
+
 function App() {
   // --- États de l'application ---
   const [inputFile, setInputFile] = useState(null); // Stocke le fichier PDF sélectionné (objet File)
@@ -15,6 +21,8 @@ function App() {
   const [isLoading, setIsLoading] = useState(false); // Vrai si le backend traite la demande
   const [errorMessage, setErrorMessage] = useState('');
   const [audioResult, setAudioResult] = useState(null);
+  const [selectedVideoPath, setSelectedVideoPath] = useState('/satisfying_video.mp4'); // Default Minecraft
+  const [isVideoModalOpen, setIsVideoModalOpen] = useState(false); // Ajoute cet état avec les autres useState
 
   // --- Fonctions (handlers, appel API) viendront ici ---
 
@@ -23,7 +31,7 @@ function App() {
     setInputText(newText); // Met à jour l'état du texte
     // Si l'utilisateur tape du texte, on considère qu'il n'utilise plus le fichier
     if (inputFile) setInputFile(null);
-    setErrorMessage(''); // Efface les erreurs précédentes (Correction: utilise setErrorMessage)
+    setErrorMessage(''); // Efface les erreurs précédentes
     setAudioResult(null); // Efface aussi le résultat précédent
   };
 
@@ -32,22 +40,23 @@ function App() {
     setInputFile(file); // Met à jour l'état du fichier
     // Si l'utilisateur choisit un fichier, on considère qu'il n'utilise plus le texte collé
     if (inputText) setInputText('');
-    setErrorMessage(''); // Efface les erreurs précédentes (Correction: utilise setErrorMessage)
+    setErrorMessage(''); // Efface les erreurs précédentes
     setAudioResult(null); // Efface aussi le résultat précédent
   };
 
   // La fonction handleSubmit viendra ici aussi...
 
-  // Fonction appelée lors du clic sur le bouton "Générer"
+  // Fonction appelée lors du clic sur le bouton "Générer" DANS InputController
+  // Renommée pour clarté, mais fait toujours l'appel API.
   const handleSubmit = async () => {
-    // Vérifier si on a du texte ou un fichier (sécurité)
-    if (!inputFile && !inputText.trim()) {
-      setErrorMessage('Veuillez fournir un fichier PDF ou coller du texte.'); // Correction: utilise setErrorMessage
-      return;
-    }
+    // La vérification est faite dans openVideoModal maintenant
+    // if (!inputFile && !inputText.trim()) {
+    //   setErrorMessage('Veuillez fournir un fichier PDF ou coller du texte.');
+    //   return;
+    // }
 
     setIsLoading(true);    // Démarre le chargement
-    setErrorMessage('');    // Efface les erreurs précédentes (Correction: utilise setErrorMessage)
+    setErrorMessage('');    // Efface les erreurs précédentes
     setAudioResult(null);    // Réinitialise l'état résultat
 
     try {
@@ -69,6 +78,8 @@ function App() {
           bytes[i] = binaryString.charCodeAt(i);
         }
         const audioBlob = new Blob([bytes], { type: 'audio/mpeg' });
+        // Log de la taille du Blob
+        console.log(`Audio Blob received/created, size: ${audioBlob.size} bytes`);
         // --- Fin Décodage ---
 
         // Créer une URL locale pour le Blob audio
@@ -82,7 +93,6 @@ function App() {
           alignment: result.alignment, // Stocke les données de timestamp
           originalText: textToProcess // Stocke le texte (simplifié ici)
         });
-        // setError(null); // Déjà fait avec setErrorMessage('') plus haut
 
       } else {
         console.error("Réponse du backend invalide:", result);
@@ -116,7 +126,7 @@ function App() {
          // Sinon, utilise le message d'erreur standard d'Axios ou JavaScript
         apiErrorMessage = err.message;
       }
-      setErrorMessage(apiErrorMessage); // Correction: utilise setErrorMessage
+      setErrorMessage(apiErrorMessage);
     } finally {
       // Dans tous les cas (succès ou erreur), arrêter le chargement
       setIsLoading(false);
@@ -152,6 +162,29 @@ function App() {
     return response.data; // Renvoie l'objet JSON complet
   };
 
+  // Fonction pour ouvrir la modale de choix vidéo
+  const openVideoModal = () => {
+    // Vérifie si on a du texte ou un fichier AVANT d'ouvrir la modale
+    if (!inputFile && !inputText.trim()) {
+       setErrorMessage('Veuillez fournir un fichier PDF ou coller du texte avant de choisir la vidéo.');
+       return; // N'ouvre pas la modale si pas d'input
+    }
+    setErrorMessage(null); // Efface les erreurs précédentes
+    setIsVideoModalOpen(true); // Ouvre la modale
+  };
+
+  // Fonction appelée quand une vidéo est choisie DANS la modale
+  const selectVideoAndGenerate = (videoPath) => {
+    setSelectedVideoPath(videoPath); // Met à jour la vidéo sélectionnée
+    setIsVideoModalOpen(false);     // Ferme la modale
+    handleSubmit();                 // LANCE la génération (l'ancienne fonction qui fait les appels API)
+  };
+
+  // Fonction pour fermer la modale sans choisir
+  const closeVideoModal = () => {
+    setIsVideoModalOpen(false);
+  };
+
   return (
     <div className="App">
       <h1>AudioDoc Visualizer</h1>
@@ -160,7 +193,7 @@ function App() {
       <InputController
         onTextChange={handleTextChange}
         onFileChange={handleFileChange}
-        onSubmit={handleSubmit}
+        onGenerateClick={openVideoModal} // <<< Passe la fonction qui ouvre la modale
         isLoading={isLoading}
       />
 
@@ -170,13 +203,48 @@ function App() {
       {/* Affiche le message d'erreur si errorMessage n'est pas vide */}
       {errorMessage && <ErrorMessage message={errorMessage} />}
 
+      {/* --- Début de la Fenêtre Modale (affichée conditionnellement) --- */}
+      {isVideoModalOpen && (
+        // Fond semi-transparent
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.6)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 50 // Pour être au-dessus de tout
+        }}>
+          {/* Boîte de la modale */}
+          <div style={{
+            backgroundColor: 'white', padding: '30px', borderRadius: '8px',
+            textAlign: 'center', boxShadow: '0 5px 15px rgba(0,0,0,0.3)'
+          }}>
+            <h3>Choisir la vidéo de fond :</h3>
+            <div style={{ margin: '20px 0', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {/* Crée un bouton pour chaque vidéo disponible */}
+              {availableVideos.map((video) => (
+                <button
+                  key={video.path}
+                  onClick={() => selectVideoAndGenerate(video.path)} // Appelle la fonction de sélection + génération
+                  style={{ padding: '10px 20px', fontSize: '1em', cursor: 'pointer' }}
+                >
+                  {video.name} {/* Affiche le nom de la vidéo */}
+                </button>
+              ))}
+            </div>
+            <button onClick={closeVideoModal} style={{ marginTop: '10px', fontSize: '0.9em' }}>
+              Annuler
+            </button>
+          </div>
+        </div>
+      )}
+      {/* --- Fin de la Fenêtre Modale --- */}
+
       {/* Affiche MediaPlayer SEULEMENT si audioResult existe */}
-      {audioResult && (
+      {audioResult && selectedVideoPath && (
         <MediaPlayer
           audioUrl={audioResult.audioUrl}     // URL du blob audio
           alignment={audioResult.alignment}   // Données de timestamp
           text={audioResult.originalText}     // Le texte original (simplifié pour l'instant)
-          videoUrl="/satisfying_video.mp4"  // Chemin vers la vidéo statique
+          videoUrl={selectedVideoPath} // <<< Utilise l'état qui contient le chemin choisi (ou le défaut)
         />
       )}
 

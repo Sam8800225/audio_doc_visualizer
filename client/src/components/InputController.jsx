@@ -5,7 +5,7 @@ import React from 'react';
 function InputController({
   onTextChange,  // Fonction pour notifier App que le texte a changé
   onFileChange,  // Fonction pour notifier App qu'un fichier a été choisi
-  onSubmit,      // Fonction pour notifier App de lancer la génération
+  onGenerateClick, // <<< Change onSubmit en onGenerateClick
   isLoading      // Booléen pour savoir si une opération est en cours
 }) {
 
@@ -24,9 +24,9 @@ function InputController({
   };
 
   // Appelé quand le bouton est cliqué
-  const handleSubmit = () => {
-    // Appelle la fonction 'onSubmit' passée en prop
-    onSubmit();
+  const handleGenerateClick = () => {
+    // Appelle la fonction 'onGenerateClick' passée en prop (qui ouvrira la modale)
+    onGenerateClick();
   };
 
   // --- Rendu JSX ---
@@ -65,12 +65,12 @@ function InputController({
 
       {/* Bouton pour lancer la génération */}
       <button
-        onClick={handleSubmit} // Appel du handler au clic
-        disabled={isLoading}  // Désactivé si chargement
+        onClick={handleGenerateClick} // <<< Appelle onGenerateClick (qui ouvrira la modale)
+        disabled={isLoading} // <<< Désactivé seulement pendant le chargement global
         style={{ padding: '10px 20px', fontSize: '1em' }}
       >
-        {/* Texte conditionnel sur le bouton */}
-        {isLoading ? 'Génération en cours...' : 'Générer l\'audio'}
+        {/* Change le texte du bouton */}
+        {isLoading ? 'Génération...' : 'Générer la vidéo'}
       </button>
     </div>
   );
