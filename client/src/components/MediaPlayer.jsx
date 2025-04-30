@@ -1,40 +1,13 @@
 // client/src/components/MediaPlayer.jsx
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { FaExpand, FaCompress, FaPlay, FaPause, FaGaugeHigh, FaMusic } from "react-icons/fa6";
-import { FaVolumeUp } from "react-icons/fa";
-import './MediaPlayer.css'; // Import du fichier CSS
+// MODIFIÉ: Séparer les imports fa et fa6
+import { FaPlay, FaPause, FaExpand, FaCompress, FaMusic } from "react-icons/fa6"; 
+import { FaVolumeUp } from "react-icons/fa"; // FaVolumeUp vient de fa
+// Imports d'icônes commentés pour le test
+import { FaGaugeHigh } from "react-icons/fa6";
+import './MediaPlayer.css';
 
-// --- Fonction Helper pour traiter l'alignement ---
-// (Garde ici la fonction processAlignmentToWords inchangée - celle de la réponse #105)
-function processAlignmentToWords(alignmentData) {
-    if (!alignmentData || !alignmentData.characters || !alignmentData.character_start_times_seconds || !alignmentData.character_end_times_seconds) {
-        console.error("Données d'alignement invalides ou manquantes pour processAlignmentToWords");
-        return [];
-    }
-    const words = []; let currentWord = ''; let wordStartTime = -1;
-    const chars = alignmentData.characters; const starts = alignmentData.character_start_times_seconds; const ends = alignmentData.character_end_times_seconds;
-    for (let i = 0; i < chars.length; i++) {
-        const char = chars[i];
-        if (char !== ' ' && char !== '\n' && char !== '\t') {
-            if (currentWord === '') { wordStartTime = starts[i]; }
-            currentWord += char;
-        } else {
-            if (currentWord !== '') {
-                const wordEndTime = ends[i - 1];
-                words.push({ word: currentWord, startTime: wordStartTime, endTime: wordEndTime });
-                currentWord = ''; wordStartTime = -1;
-            }
-        }
-    }
-    if (currentWord !== '') {
-        const wordEndTime = ends[chars.length - 1];
-        words.push({ word: currentWord, startTime: wordStartTime, endTime: wordEndTime });
-    }
-    // console.log("Timings par mot traités (10 premiers):", words.slice(0, 10));
-    return words;
-}
-
-// --- Fonction Helper pour formater le temps ---
+// --- Fonction Helper pour formater le temps (Réactivée) ---
 const formatTime = (timeInSeconds) => {
   if (!timeInSeconds || !isFinite(timeInSeconds) || timeInSeconds < 0) return '00:00';
   const totalSeconds = Math.floor(timeInSeconds);
@@ -43,308 +16,555 @@ const formatTime = (timeInSeconds) => {
   return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
 };
 
+// --- Fonction Helper pour l'alignement (RÉACTIVÉE) ---
+function processAlignmentToWords(alignmentData) {
+    // Vérification ajoutée
+    if (!alignmentData || !alignmentData.characters || !alignmentData.character_start_times_seconds || !alignmentData.character_end_times_seconds) {
+        console.warn("processAlignmentToWords: Données d'alignement invalides ou manquantes.");
+        return [];
+    }
+    const words = []; let currentWord = ''; let wordStartTime = -1;
+    const chars = alignmentData.characters;
+    const starts = alignmentData.character_start_times_seconds;
+    const ends = alignmentData.character_end_times_seconds;
+    for (let i = 0; i < chars.length; i++) {
+        const char = chars[i];
+        if (char !== ' ' && char !== '\n' && char !== '\t') {
+            if (currentWord === '') { wordStartTime = starts[i]; }
+            currentWord += char;
+        } else {
+            if (currentWord !== '') {
+                const wordEndTime = ends[i - 1];
+                 // Vérifier si les temps sont valides
+                 if (typeof wordStartTime === 'number' && typeof wordEndTime === 'number' && wordStartTime <= wordEndTime) {
+                    words.push({ word: currentWord, startTime: wordStartTime, endTime: wordEndTime });
+                 } else {
+                    console.warn(`Mot invalide sauté: "${currentWord}" (start: ${wordStartTime}, end: ${wordEndTime})`);
+                 }
+                currentWord = ''; wordStartTime = -1;
+            }
+        }
+    }
+    if (currentWord !== '') {
+        const wordEndTime = ends[chars.length - 1];
+        if (typeof wordStartTime === 'number' && typeof wordEndTime === 'number' && wordStartTime <= wordEndTime) {
+           words.push({ word: currentWord, startTime: wordStartTime, endTime: wordEndTime });
+        } else {
+            console.warn(`Dernier mot invalide sauté: "${currentWord}" (start: ${wordStartTime}, end: ${wordEndTime})`);
+        }
+    }
+    console.log(`processAlignmentToWords: ${words.length} mots traités.`);
+    return words;
+}
 
-// --- Composant MediaPlayer ---
-function MediaPlayer({ audioUrl, videoUrl, musicUrl, text, alignment }) {
+// --- Composant MediaPlayer (Réintroduction Musique + Contrôles) ---
+// Réactiver les props text et alignment
+function MediaPlayer({ audioUrl, videoUrl, text, alignment, musicUrl }) { 
   // Refs
+  const videoRef = useRef(null);
   const audioRef = useRef(null);
   const musicRef = useRef(null);
-  const videoRef = useRef(null);
   const playerContainerRef = useRef(null);
-  const progressBarRef = useRef(null); // Ref pour la barre de progression
-  const currentAudioUrlRef = useRef(null);
+  const progressBarRef = useRef(null); 
   const lastUpdateTimeRef = useRef(0);
-  const throttleDelay = 150; // Délai un peu plus court pour la synchro texte?
+  const throttleDelay = 150; 
 
-  // États
+  // États Généraux
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [displayTime, setDisplayTime] = useState(0); 
+  
+  // États Durées
+  const [ttsDuration, setTtsDuration] = useState(0); 
+  const [videoDuration, setVideoDuration] = useState(0); 
+  const [musicDuration, setMusicDuration] = useState(0); 
+  
+  // États Segments Aléatoires
+  const [videoStartTime, setVideoStartTime] = useState(0);
+  const [musicStartTime, setMusicStartTime] = useState(0);
+  const [targetEndTime, setTargetEndTime] = useState(0); 
+  const [segmentCalculated, setSegmentCalculated] = useState(false);
+  const durationsLoadedRef = useRef({ tts: false, video: false, music: !musicUrl });
+  
+  // États Volume
+  const [voiceVolume, setVoiceVolume] = useState(1);
+  const [showVoiceVolumeSlider, setShowVoiceVolumeSlider] = useState(false);
+  const [musicVolume, setMusicVolume] = useState(0.5);
+  const [showMusicVolumeSlider, setShowMusicVolumeSlider] = useState(false);
+  
+  // États pour synchro texte (RÉACTIVÉS)
   const [wordTimings, setWordTimings] = useState([]);
   const [activeWordIndex, setActiveWordIndex] = useState(-1);
   const [currentLineWords, setCurrentLineWords] = useState([]);
   const [currentLineStartIndex, setCurrentLineStartIndex] = useState(0);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [audioDuration, setAudioDuration] = useState(0);
-  const [videoDuration, setVideoDuration] = useState(0);
-  const [videoStartTime, setVideoStartTime] = useState(0);
-  const [playbackSpeed, setPlaybackSpeed] = useState(1.0);
-  const [isSpeedMenuOpen, setIsSpeedMenuOpen] = useState(false);
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [voiceVolume, setVoiceVolume] = useState(1);
-  const [musicVolume, setMusicVolume] = useState(0.3);
-  const [isVoiceSliderVisible, setIsVoiceSliderVisible] = useState(false);
-  const [isMusicSliderVisible, setIsMusicSliderVisible] = useState(false);
-
+  
 
   // --- Effets ---
-
-  // Effet 1: Traiter l'alignement + Reset états liés à l'audio
+  // Effet 1: Traiter l'alignement (MODIFIÉ pour reset displayTime)
   useEffect(() => {
-    if (alignment && audioUrl) {
+    console.log("MediaPlayer useEffect[alignment]: alignment prop reçu:", alignment);
+    setSegmentCalculated(false);
+    durationsLoadedRef.current = { tts: false, video: false, music: !musicUrl };
+    setVideoStartTime(0);
+    setMusicStartTime(0);
+    setTargetEndTime(0);
+    setTtsDuration(0);
+    setWordTimings([]); 
+    setActiveWordIndex(-1);
+    setDisplayTime(0);
+    if (videoRef.current) videoRef.current.currentTime = 0;
+    if (audioRef.current) audioRef.current.currentTime = 0;
+    if (musicRef.current) musicRef.current.currentTime = 0;
+
+    if (alignment) { 
+      console.log("MediaPlayer: Traitement des données d'alignement reçues...");
       const processedTimings = processAlignmentToWords(alignment);
       setWordTimings(processedTimings);
-      setActiveWordIndex(-1);
-      setCurrentTime(0);
-      setPlaybackSpeed(1.0);
-      if (audioRef.current) {
-          audioRef.current.playbackRate = 1.0;
-          audioRef.current.currentTime = 0;
-      }
-      if (videoRef.current) {
-          videoRef.current.playbackRate = 1.0;
-      }
     } else {
-      setWordTimings([]);
-      setActiveWordIndex(-1);
-      setCurrentLineWords([]);
-      setCurrentLineStartIndex(0);
-      setCurrentTime(0);
-      setPlaybackSpeed(1.0);
-      setAudioDuration(0);
+      console.log("MediaPlayer: Pas d'alignement, reset complet.");
     }
-  }, [alignment, audioUrl]);
+  }, [alignment, audioUrl, videoUrl, musicUrl]);
 
-  // Effet 2: Calculer le videoStartTime aléatoire
-  useEffect(() => {
-    if (audioDuration > 0 && videoDuration > 0) {
-      const maxStartTime = Math.max(0, videoDuration - audioDuration);
-      const randomStartTime = Math.random() * maxStartTime;
-      setVideoStartTime(randomStartTime);
-
-      if (videoRef.current) {
-        videoRef.current.currentTime = randomStartTime;
-      }
-    } else {
-         setVideoStartTime(0);
-    }
-  }, [audioDuration, videoDuration]);
-
-  // --- Effet pour mettre à jour la LIGNE de mots affichée ---
+  // Effet 2: Mise à jour de la ligne de mots (RÉACTIVÉ)
   useEffect(() => {
     if (!wordTimings || wordTimings.length === 0) {
       if (currentLineWords.length > 0) setCurrentLineWords([]);
       if (currentLineStartIndex !== 0) setCurrentLineStartIndex(0);
       return;
     }
-
+    // Si on est en pause et aucun mot n'est actif, on vide la ligne
     if (!isPlaying && activeWordIndex === -1) {
-        if (currentLineWords.length > 0) {
-            console.log("Effect 3: Playback stopped/ended, clearing words.");
-            setCurrentLineWords([]);
-        }
+        if (currentLineWords.length > 0) setCurrentLineWords([]);
         return;
     }
-
+    // Si un mot est actif, on calcule la ligne
     if (activeWordIndex !== -1) {
       const targetLineStartIndex = Math.floor(activeWordIndex / 4) * 4;
-
-      if (targetLineStartIndex !== currentLineStartIndex || currentLineWords.length === 0) {
-        console.log(`Effect 3: Updating displayed line. activeIndex=${activeWordIndex}, new line starts at ${targetLineStartIndex}`);
+      // Mettre à jour seulement si la ligne de départ change
+      if (targetLineStartIndex !== currentLineStartIndex) {
         const endIndex = Math.min(targetLineStartIndex + 4, wordTimings.length);
         const newLineWords = wordTimings.slice(targetLineStartIndex, endIndex).map(wt => wt.word);
         setCurrentLineWords(newLineWords);
         setCurrentLineStartIndex(targetLineStartIndex);
       }
+    } else if (isPlaying && currentLineWords.length > 0) {
+        // Si on joue mais aucun mot n'est actif (début/fin?), vider la ligne?
+        // Optionnel, dépend du comportement souhaité
+        // setCurrentLineWords([]); 
     }
   }, [activeWordIndex, wordTimings, currentLineStartIndex, isPlaying]);
 
-
-  // Effet 4: Nettoyage de l'URL Blob (avec Ref)
-  useEffect(() => { currentAudioUrlRef.current = audioUrl; }, [audioUrl]);
+  // AJOUT: Effet pour gérer le changement de mode plein écran
   useEffect(() => {
-    return () => {
-      if (currentAudioUrlRef.current) {
-        console.log("Nettoyage de l'URL Blob (au démontage via ref):", currentAudioUrlRef.current);
-        URL.revokeObjectURL(currentAudioUrlRef.current);
-      }
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
     };
-  }, []);
-
-  // Effet 5: Synchro état Fullscreen
-  useEffect(() => {
-    const handleFullscreenChange = () => { setIsFullscreen(!!document.fullscreenElement); };
     document.addEventListener('fullscreenchange', handleFullscreenChange);
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
   }, []);
 
-  // AJOUT: Effet 6: Appliquer les volumes quand ils changent
+  // AJOUT: Effet pour mettre à jour le volume des éléments audio
   useEffect(() => {
-    if (audioRef.current) {
-      audioRef.current.volume = voiceVolume;
-    }
+      if(audioRef.current) audioRef.current.volume = voiceVolume;
   }, [voiceVolume]);
 
   useEffect(() => {
-    if (musicRef.current) {
-      musicRef.current.volume = musicVolume;
-    }
+      if(musicRef.current) musicRef.current.volume = musicVolume;
   }, [musicVolume]);
 
+  // <<< AJOUT: Effet pour calculer les segments quand les durées sont prêtes
+  useEffect(() => {
+    if (durationsLoadedRef.current.tts && durationsLoadedRef.current.video && durationsLoadedRef.current.music && ttsDuration > 0 && !segmentCalculated) {
+        console.log(`Calcul des segments aléatoires: TTS=${ttsDuration}s, Vidéo=${videoDuration}s, Musique=${musicDuration}s`);
+        
+        let vStart = 0;
+        if (videoDuration > ttsDuration) {
+            vStart = Math.random() * (videoDuration - ttsDuration);
+        } else {
+            console.warn("La vidéo est plus courte que l'audio TTS !");
+        }
+        setVideoStartTime(vStart);
+        setTargetEndTime(vStart + ttsDuration);
+
+        let mStart = 0;
+        if (musicUrl && musicDuration > ttsDuration) {
+            mStart = Math.random() * (musicDuration - ttsDuration);
+        } else if (musicUrl) {
+            console.warn("La musique est plus courte que l'audio TTS !");
+        }
+        setMusicStartTime(mStart);
+        
+        // Initialiser le temps affiché à 0 et les éléments média à leur début de segment
+        setDisplayTime(0);
+        if(videoRef.current) videoRef.current.currentTime = vStart;
+        if(audioRef.current) audioRef.current.currentTime = 0;
+        if(musicRef.current) musicRef.current.currentTime = mStart;
+
+        setSegmentCalculated(true);
+        console.log("Segments calculés et prêts.");
+    }
+  }, [ttsDuration, videoDuration, musicDuration, segmentCalculated, musicUrl]);
+
+  // --- Fonctions Helper Internes ---
+  // Fonction pour vérifier si toutes les durées sont chargées
+  const checkDurationsAndCalculate = useCallback(() => {
+    if (durationsLoadedRef.current.tts && durationsLoadedRef.current.video && durationsLoadedRef.current.music && !segmentCalculated) {
+      console.log("Toutes les durées sont chargées, prêt pour le calcul des segments via useEffect.")
+    }
+  }, [segmentCalculated]);
 
   // --- Fonctions Handler ---
-
-  // Mise à jour de l'Index et du temps actuel (throttled)
+  // handleTimeUpdate: MAJ pour calculer displayTime
   const handleTimeUpdate = useCallback(() => {
-    const now = Date.now();
-    if (now - lastUpdateTimeRef.current < throttleDelay) return;
-    lastUpdateTimeRef.current = now;
+     const now = Date.now();
+     if (now - lastUpdateTimeRef.current < throttleDelay) return;
+     lastUpdateTimeRef.current = now;
+ 
+     if (!videoRef.current || !isPlaying || !segmentCalculated) return; 
+     
+     const currentVideoTime = videoRef.current.currentTime;
+     // Calculer le temps écoulé dans le segment pour l'affichage
+     const currentDisplayTime = Math.max(0, currentVideoTime - videoStartTime);
+     setDisplayTime(currentDisplayTime); // <<< Met à jour l'état pour l'UI
 
-    if (!audioRef.current || !wordTimings || wordTimings.length === 0 || !isPlaying) return;
+     // Vérifier fin de segment (basé sur temps vidéo réel)
+     if (currentVideoTime >= targetEndTime) {
+         console.log(`Fin du segment atteinte (Vidéo: ${currentVideoTime.toFixed(2)}s >= Target: ${targetEndTime.toFixed(2)}s). Arrêt.`);
+         if (videoRef.current) videoRef.current.pause();
+         if (audioRef.current) audioRef.current.pause();
+         if (musicRef.current) musicRef.current.pause();
+         setIsPlaying(false);
+         // Rembobiner au début du segment
+         if (videoRef.current) videoRef.current.currentTime = videoStartTime;
+         if (audioRef.current) audioRef.current.currentTime = 0;
+         if (musicRef.current) musicRef.current.currentTime = musicStartTime;
+         setDisplayTime(0); // <<< Reset l'affichage à 0
+         setActiveWordIndex(-1);
+         return; 
+     }
+     // --- FIN Vérif fin segment ---
 
-    const currentAudioTime = audioRef.current.currentTime;
-    setCurrentTime(currentAudioTime);
+     // --- LOGIQUE DE SYNCHRO TEXTE (basée sur displayTime maintenant) ---
+     if (wordTimings.length > 0) {
+         // currentDisplayTime est équivalent à currentTtsTime
+         let foundWordIndex = -1;
+         const timeToCompare = currentDisplayTime; 
+         for (let i = 0; i < wordTimings.length; i++) {
+           if (wordTimings[i].startTime <= timeToCompare && wordTimings[i].endTime > timeToCompare) {
+             foundWordIndex = i;
+             break;
+           }
+         }
+         if (foundWordIndex === -1 && timeToCompare >= ttsDuration) {
+             foundWordIndex = -1; 
+         }
+         if (foundWordIndex !== activeWordIndex) {
+             setActiveWordIndex(foundWordIndex);
+         }
+     }
+     // --- FIN LOGIQUE SYNCHRO TEXTE ---
 
-    let foundWordIndex = -1;
-    for (let i = 0; i < wordTimings.length; i++) {
-      if (wordTimings[i].startTime <= currentAudioTime && wordTimings[i].endTime > currentAudioTime) {
-        foundWordIndex = i;
-        break;
-      }
-    }
-
-    if (foundWordIndex === -1 && wordTimings.length > 0 && currentAudioTime >= wordTimings[wordTimings.length - 1].endTime) {
-        foundWordIndex = -1;
-    }
-
-    if (foundWordIndex !== activeWordIndex ) {
-       setActiveWordIndex(foundWordIndex);
-    }
-
-    if (videoRef.current && audioDuration > 0 && videoStartTime >= 0 && videoRef.current.currentTime >= (videoStartTime + audioDuration)) {
-       videoRef.current.currentTime = videoStartTime;
-       if (isPlaying) { videoRef.current.play().catch(e => console.error("Video replay error on loop:", e)); }
-    }
-
-    if (musicRef.current && audioDuration > 0 && musicRef.current.currentTime >= audioDuration) {
-        musicRef.current.currentTime = 0;
-        if (isPlaying) { musicRef.current.play().catch(e => console.error("Music replay error on loop:", e)); }
-    }
-  }, [wordTimings, activeWordIndex, audioDuration, videoStartTime, isPlaying]);
-
-  // Play/Pause synchronisé
+  }, [isPlaying, wordTimings, activeWordIndex, segmentCalculated, targetEndTime, videoStartTime, ttsDuration]);
+  
+  // togglePlayPause: MAJ pour reset displayTime
   const togglePlayPause = () => {
-    if (!audioRef.current || !videoRef.current || audioDuration === 0) return;
-    const newIsPlaying = !isPlaying;
-    if (newIsPlaying) {
-      if (musicRef.current && musicRef.current.paused) {
-          musicRef.current.currentTime = 0;
-      }
-      const playPromises = [audioRef.current.play(), videoRef.current.play()];
-      if (musicRef.current) {
-          playPromises.push(musicRef.current.play());
-      }
-      Promise.all(playPromises)
-        .then(() => { /* Play OK */ })
-        .catch(error => { console.error("Erreur lecture:", error); setIsPlaying(false); });
-    } else {
-      audioRef.current.pause();
-      videoRef.current.pause();
-      if (musicRef.current) {
-          musicRef.current.pause();
-      }
-    }
-     setIsPlaying(newIsPlaying);
+     if (!videoRef.current || !segmentCalculated) {
+       console.warn("Play/Pause impossible: Segments non calculés.");
+       return;
+     }
+     const canPlayVoice = audioRef.current && audioUrl;
+     const canPlayMusic = musicRef.current && musicUrl;
+
+     const newIsPlaying = !isPlaying;
+     if (newIsPlaying) {
+       // Positionner au début du segment
+       console.log(`Démarrage lecture au début du segment: Vid=${videoStartTime.toFixed(2)}, Mus=${musicStartTime.toFixed(2)}, TTS=0`);
+       videoRef.current.currentTime = videoStartTime;
+       audioRef.current.currentTime = 0;
+       if(canPlayMusic) musicRef.current.currentTime = musicStartTime;
+       setDisplayTime(0); // <<< Reset l'affichage à 0 au play
+       
+       // Lancer la lecture
+       const videoPlayPromise = videoRef.current.play();
+       const voicePlayPromise = canPlayVoice ? audioRef.current.play() : Promise.resolve();
+       const musicPlayPromise = canPlayMusic ? musicRef.current.play() : Promise.resolve();
+       
+       Promise.all([videoPlayPromise, voicePlayPromise, musicPlayPromise])
+         .then(() => { setIsPlaying(true); })
+         .catch(error => { 
+             console.error("Erreur lecture:", error);
+             setIsPlaying(false); 
+             if (videoRef.current && !videoRef.current.paused) videoRef.current.pause();
+             if (audioRef.current && !audioRef.current.paused) audioRef.current.pause();
+             if (musicRef.current && !musicRef.current.paused) musicRef.current.pause();
+         });
+
+     } else {
+       // Mettre tout en pause
+       if (videoRef.current) videoRef.current.pause();
+       if (canPlayVoice) audioRef.current.pause();
+       if (canPlayMusic) musicRef.current.pause();
+       setIsPlaying(false);
+     }
   };
 
-  // Changement de vitesse
-  const handleSpeedChange = (newSpeed) => {
-     if (audioRef.current) audioRef.current.playbackRate = newSpeed;
-     if (videoRef.current) videoRef.current.playbackRate = newSpeed;
-     setPlaybackSpeed(newSpeed);
-     setIsSpeedMenuOpen(false);
-  };
-
-  // Gestion de la fin de l'audio
-  const handleAudioEnd = () => {
-      console.log("Audio TTS terminé.");
+  // handleVideoEnd: MAJ pour reset displayTime
+  const handleVideoEnd = () => {
+      console.log("Événement 'ended' vidéo reçu. Resetting...");
       setIsPlaying(false);
-      setActiveWordIndex(-1);
-      setCurrentTime(audioDuration);
-      if (videoRef.current) videoRef.current.pause();
-      if (musicRef.current) musicRef.current.pause();
+      if (videoRef.current) videoRef.current.currentTime = videoStartTime;
+      if (audioRef.current) audioRef.current.currentTime = 0;
+      if (musicRef.current) musicRef.current.currentTime = musicStartTime;
+      setDisplayTime(0); // <<< Reset l'affichage
+      setActiveWordIndex(-1); 
+  };
+  
+  // Handlers metadata (MODIFIÉ pour flag + calcul)
+  const handleAudioMetadata = () => { 
+      if (audioRef.current) { 
+          const d = audioRef.current.duration; 
+          if(d && isFinite(d)) {
+            console.log("Durée TTS chargée:", d);
+            setTtsDuration(d);
+            durationsLoadedRef.current.tts = true;
+            checkDurationsAndCalculate();
+          } else { 
+            setTtsDuration(0);
+            durationsLoadedRef.current.tts = false;
+          }
+      } 
+  };
+  const handleVideoMetadata = () => { 
+      if (videoRef.current) { 
+          const d = videoRef.current.duration; 
+          if(d && isFinite(d)) {
+            console.log("Durée Vidéo chargée:", d);
+            setVideoDuration(d);
+            durationsLoadedRef.current.video = true;
+            checkDurationsAndCalculate();
+          } else { 
+            setVideoDuration(0); 
+            durationsLoadedRef.current.video = false;
+          }
+      } 
+  };
+  const handleMusicMetadata = () => {
+    if (musicRef.current) {
+      const d = musicRef.current.duration;
+      if(d && isFinite(d)) {
+        console.log("Durée Musique chargée:", d);
+        setMusicDuration(d);
+        durationsLoadedRef.current.music = true;
+        checkDurationsAndCalculate();
+      } else {
+        setMusicDuration(0);
+        durationsLoadedRef.current.music = false;
+      }
+    } else {
+      // S'il n'y a pas de musique (musicUrl est null/vide), marquer comme chargé
+      durationsLoadedRef.current.music = true;
+      checkDurationsAndCalculate();
+    }
   };
 
-  // Gestion clic sur barre de progression (Seek)
+  // handleSeek: MAJ pour utiliser displayTime et ttsDuration
   const handleSeek = (event) => {
-     if (!audioRef.current || !videoRef.current || !progressBarRef.current || audioDuration <= 0) return;
+     if (!videoRef.current || !progressBarRef.current || !segmentCalculated || ttsDuration <= 0) return;
+     
      const progressBarRect = progressBarRef.current.getBoundingClientRect();
      const clickPositionInBar = event.clientX - progressBarRect.left;
      const clickPercent = Math.max(0, Math.min(1, clickPositionInBar / progressBarRect.width));
-     const targetAudioTime = clickPercent * audioDuration;
+     
+     // Le pourcentage correspond directement au temps dans le segment TTS
+     const targetDisplayTime = clickPercent * ttsDuration;
 
-     audioRef.current.currentTime = targetAudioTime;
-     setCurrentTime(targetAudioTime);
+     // Calculer les temps réels pour chaque média
+     const targetVideoTime = videoStartTime + targetDisplayTime;
+     const targetMusicTime = musicStartTime + targetDisplayTime;
+     const targetTtsTime = targetDisplayTime; // TTS = displayTime
 
-     const targetVideoTime = Math.min(videoDuration, videoStartTime + targetAudioTime);
-     videoRef.current.currentTime = targetVideoTime;
+     console.log(`Seek: ${clickPercent * 100}% -> Display/TTS Time: ${targetDisplayTime.toFixed(2)} -> Video Time: ${targetVideoTime.toFixed(2)}`);
 
-     if (musicRef.current && isFinite(targetAudioTime)) {
-        musicRef.current.currentTime = targetAudioTime;
+     // Appliquer les temps
+     if (videoRef.current) videoRef.current.currentTime = targetVideoTime;
+     if (audioRef.current) audioRef.current.currentTime = targetTtsTime;
+     if (musicRef.current) musicRef.current.currentTime = targetMusicTime;
+     
+     setDisplayTime(targetDisplayTime); // <<< Mettre à jour l'affichage
+
+     // Mettre à jour l'index du mot surligné immédiatement
+     if (wordTimings.length > 0) {
+        let foundWordIndex = -1;
+        const timeToCompare = targetDisplayTime; 
+        for (let i = 0; i < wordTimings.length; i++) {
+          if (wordTimings[i].startTime <= timeToCompare && wordTimings[i].endTime > timeToCompare) {
+            foundWordIndex = i;
+            break;
+          }
+        }
+         if (foundWordIndex === -1 && timeToCompare >= ttsDuration) {
+             foundWordIndex = -1; 
+         }
+        setActiveWordIndex(foundWordIndex); 
      }
-
-     let foundWordIndex = -1;
-     for (let i = 0; i < wordTimings.length; i++) {
-       if (wordTimings[i].startTime <= targetAudioTime && wordTimings[i].endTime > targetAudioTime) {
-         foundWordIndex = i;
-         break;
-       }
-     }
-     setActiveWordIndex(foundWordIndex);
   };
 
-   // Gestion Fullscreen
-   const toggleFullscreen = () => {
-      const elem = playerContainerRef.current; if (!elem) return;
-      if (!document.fullscreenElement) {
-        elem.requestFullscreen().catch(err => console.error(`Erreur passage plein écran: ${err.message}`));
-      } else {
-        document.exitFullscreen().catch(err => console.error(`Erreur sortie plein écran: ${err.message}`));
-      }
-   };
-
-  // Gestion chargement métadonnées
-  const handleAudioMetadata = () => { if (audioRef.current) { const d = audioRef.current.duration; if(d && isFinite(d)) setAudioDuration(d); else setAudioDuration(0); } }
-  const handleVideoMetadata = () => { if (videoRef.current) { const d = videoRef.current.duration; if(d && isFinite(d)) setVideoDuration(d); else setVideoDuration(0); } }
-
-  // AJOUT: Handlers pour les volumes
+  // Handlers Volume et Plein écran (Identiques)
   const handleVoiceVolumeChange = (event) => {
     const newVolume = parseFloat(event.target.value);
     setVoiceVolume(newVolume);
   };
-
   const handleMusicVolumeChange = (event) => {
     const newVolume = parseFloat(event.target.value);
     setMusicVolume(newVolume);
   };
-
-  // AJOUT: Handlers pour basculer la visibilité des sliders
-  const toggleVoiceSlider = () => {
-    setIsVoiceSliderVisible(!isVoiceSliderVisible);
-    setIsMusicSliderVisible(false); // Cacher l'autre slider
+  const toggleVoiceVolumeSlider = () => {
+    setShowVoiceVolumeSlider(!showVoiceVolumeSlider);
+    setShowMusicVolumeSlider(false); 
+  };
+  const toggleMusicVolumeSlider = () => {
+    setShowMusicVolumeSlider(!showMusicVolumeSlider);
+    setShowVoiceVolumeSlider(false); 
+  };
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      playerContainerRef.current?.requestFullscreen()
+        .catch(err => console.error(`Erreur passage plein écran: ${err.message} (${err.name})`));
+    } else {
+      document.exitFullscreen();
+    }
   };
 
-  const toggleMusicSlider = () => {
-    setIsMusicSliderVisible(!isMusicSliderVisible);
-    setIsVoiceSliderVisible(false); // Cacher l'autre slider
-  };
-
-
-  // --- Rendu JSX ---
+  // --- Rendu JSX (MODIFIÉ pour structure barre de contrôle) ---
   return (
     <div
       ref={playerContainerRef}
-      className={`player-container ${isFullscreen ? 'fullscreen-active' : ''}`}
+      className={`player-container ${isFullscreen ? 'fullscreen' : ''}`}
     >
       <video
         ref={videoRef}
         src={videoUrl}
-        muted playsInline
-        onClick={togglePlayPause}
-        onLoadedMetadata={handleVideoMetadata}
-        style={{ display: 'block', width: '100%', height: 'auto', cursor:'pointer' }}
-       />
+        muted 
+        playsInline
+        onClick={togglePlayPause} 
+        onLoadedMetadata={handleVideoMetadata} // Déclenche calcul segment
+        onTimeUpdate={handleTimeUpdate} // Gère fin de segment + synchro texte
+        onEnded={handleVideoEnd} // Sécurité
+        style={{ display: 'block', width: '100%', height: 'auto', cursor: 'pointer' }}
+      />
 
-      {/* Affiche le texte seulement si on a des timings */}
-      {wordTimings.length > 0 && (
+      {/* Audio Voix (TTS) */}
+      {audioUrl && (
+        <audio
+          ref={audioRef} 
+          src={audioUrl}
+          onLoadedMetadata={handleAudioMetadata} // Déclenche calcul segment
+          style={{ display: 'none' }}
+         />
+      )}
+
+      {/* Audio Musique */}
+      {musicUrl && (
+        <audio
+          ref={musicRef}
+          src={musicUrl}
+          loop 
+          onLoadedMetadata={handleMusicMetadata} // Déclenche calcul segment
+          style={{ display: 'none' }}
+        />
+      )}
+       
+      {/* Barre de Contrôles (NOUVELLE STRUCTURE) */}
+      {videoDuration > 0 && (
+        <div className={`controls-bar ${!isPlaying ? 'visible-when-paused' : ''}`}>
+          
+          {/* === GROUPE GAUCHE === */}
+          <div className="controls-left">
+            <button onClick={togglePlayPause} className="control-button" title={isPlaying ? 'Pause' : 'Play'} disabled={!segmentCalculated}>
+              {isPlaying ? <FaPause /> : <FaPlay />}
+            </button>
+            {/* AFFICHAGE TEMPS ACTUEL UNIQUEMENT */}
+            <span className="time-display">{formatTime(displayTime)}</span> 
+          </div>
+
+          {/* === GROUPE CENTRE === */}
+          <div className="controls-center">
+            <div 
+              ref={progressBarRef} 
+              onClick={handleSeek}
+              className="progress-bar-container"
+              title={segmentCalculated ? "Cliquer pour naviguer dans le segment" : "Calcul du segment en cours..."}
+              style={{ cursor: segmentCalculated ? 'pointer' : 'default' }} 
+            >
+                {segmentCalculated && ttsDuration > 0 && (
+                  <div 
+                    className="progress-bar-fill" 
+                    style={{ width: `${(displayTime / ttsDuration) * 100}%` }}
+                  />
+                )}
+                {!segmentCalculated && (
+                    <div className="progress-bar-fill" style={{ width: '0%', backgroundColor: '#888' }}/>
+                )}
+            </div> 
+          </div>
+
+          {/* === GROUPE DROITE === */}
+          <div className="controls-right">
+            {/* AFFICHAGE TEMPS TOTAL ICI */}
+            <span className="time-display">{formatTime(ttsDuration)}</span>
+            
+            {/* BOUTON PLEIN ECRAN ICI */}
+            <button onClick={toggleFullscreen} className="control-button" title={isFullscreen ? 'Quitter plein écran' : 'Plein écran'}>
+              {isFullscreen ? <FaCompress /> : <FaExpand />}
+            </button>
+
+            {/* CONTENEUR POUR LES CONTROLES DE VOLUME (maintenant après plein écran) */}
+            <div className="volume-controls-container">
+                {/* Volume Voix */}
+                <div className="volume-control-wrapper"> 
+                  <button onClick={toggleVoiceVolumeSlider} className="control-button icon-button" title="Volume Voix">
+                    <FaVolumeUp />
+                  </button>
+                  {showVoiceVolumeSlider && (
+                    <div className="volume-slider-container vertical">
+                      <input 
+                        type="range" 
+                        min="0" max="1" step="0.05" 
+                        value={voiceVolume} 
+                        onChange={handleVoiceVolumeChange} 
+                        className="volume-slider slider-vertical" 
+                       />
+                    </div>
+                  )}
+                </div>
+                {/* Volume Musique */}
+                {musicUrl && (
+                  <div className="volume-control-wrapper">
+                    <button onClick={toggleMusicVolumeSlider} className="control-button icon-button" title="Volume Musique">
+                      <FaMusic />
+                    </button>
+                    {showMusicVolumeSlider && (
+                      <div className="volume-slider-container vertical">
+                        <input 
+                          type="range" 
+                          min="0" max="1" step="0.05" 
+                          value={musicVolume} 
+                          onChange={handleMusicVolumeChange} 
+                          className="volume-slider slider-vertical" 
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
+            </div> {/* Fin volume-controls-container */}
+
+          </div> {/* Fin controls-right */}
+           
+        </div>
+      )}
+      
+      {/* Overlay Texte (Basé sur activeWordIndex, lui-même basé sur temps TTS) */}
+      {wordTimings.length > 0 && segmentCalculated && (
          <div className="text-overlay">
            <span className="word-display-text" key={currentLineStartIndex}>
              {currentLineWords.map((word, indexInLine) => {
@@ -362,112 +582,9 @@ function MediaPlayer({ audioUrl, videoUrl, musicUrl, text, alignment }) {
            </span>
          </div>
       )}
+      {/* --- Fin Overlay Texte --- */} 
 
-      {/* Affiche les contrôles seulement si l'audio est chargé */}
-      {audioDuration > 0 && (
-        <div className={`controls-bar ${!isPlaying ? 'visible-when-paused' : ''}`}>
-           <button onClick={togglePlayPause} className="control-button" title={isPlaying ? 'Pause' : 'Play'}>
-             {isPlaying ? <FaPause /> : <FaPlay />}
-           </button>
-
-           <span className="time-display">{formatTime(currentTime)}</span>
-           <div ref={progressBarRef} onClick={handleSeek} className="progress-bar-container">
-              <div className="progress-bar-fill" style={{ width: `${(currentTime / audioDuration) * 100}%` }} />
-           </div>
-           <span className="time-display">{formatTime(audioDuration)}</span>
-
-           {/* AJOUT: Contrôles de Volume (Structure modifiée) */} 
-           <div className="volume-controls">
-             {/* Volume Voix */} 
-             <div className="volume-control-wrapper">
-               <button onClick={toggleVoiceSlider} className="control-button icon-button" title="Volume Voix">
-                 <FaVolumeUp />
-               </button>
-               {isVoiceSliderVisible && (
-                 <div className="volume-slider-container vertical">
-                   <input
-                     type="range"
-                     min="0"
-                     max="1"
-                     step="0.05"
-                     value={voiceVolume}
-                     onChange={handleVoiceVolumeChange}
-                     className="volume-slider vertical"
-                     orient="vertical"
-                   />
-                 </div>
-               )}
-             </div>
-
-             {/* Volume Musique (seulement si musique présente) */} 
-             {musicUrl && (
-               <div className="volume-control-wrapper">
-                  <button onClick={toggleMusicSlider} className="control-button icon-button" title="Volume Musique">
-                     <FaMusic />
-                  </button>
-                  {isMusicSliderVisible && (
-                     <div className="volume-slider-container vertical">
-                         <input
-                         type="range"
-                         min="0"
-                         max="1"
-                         step="0.05"
-                         value={musicVolume}
-                         onChange={handleMusicVolumeChange}
-                         className="volume-slider vertical"
-                         orient="vertical"
-                         />
-                     </div>
-                  )}
-               </div>
-             )}
-           </div>
-
-           {/* Contrôle de Vitesse */}
-           <div style={{ position: 'relative', display: 'inline-block' }}>
-               <button onClick={() => setIsSpeedMenuOpen(!isSpeedMenuOpen)} className="control-button" title="Vitesse">
-                  <FaGaugeHigh />
-                  <span style={{ marginLeft: '5px', fontSize:'0.8em' }}>{playbackSpeed.toFixed(2)}x</span>
-               </button>
-               {isSpeedMenuOpen && (
-                  <div className="speed-menu">
-                      <ul>
-                         {[1.0, 1.25, 1.5, 2.0].map((speed) => (
-                           <li key={speed} className={playbackSpeed === speed ? 'active-speed' : ''} onClick={() => handleSpeedChange(speed)} >
-                             {speed.toFixed(speed === 1.0 ? 1 : 2)}x
-                           </li>
-                         ))}
-                      </ul>
-                  </div>
-               )}
-           </div>
-
-           {/* Bouton Plein Écran */}
-           <button onClick={toggleFullscreen} className="control-button" title={isFullscreen ? 'Quitter plein écran' : 'Plein écran'}>
-             {isFullscreen ? <FaCompress /> : <FaExpand />}
-           </button>
-        </div>
-      )}
-
-      {/* Audio Caché */}
-      <audio
-        ref={audioRef} src={audioUrl}
-        onLoadedMetadata={handleAudioMetadata}
-        onTimeUpdate={handleTimeUpdate}
-        onEnded={handleAudioEnd}
-        style={{ display: 'none' }}
-       />
-
-      {/* AJOUT: Audio Secondaire (Musique de Fond) */} 
-      {musicUrl && (
-          <audio
-            ref={musicRef}
-            src={musicUrl}
-            loop={false}
-          ></audio>
-      )}
-
-    </div> // Fin player-container
+    </div>
   );
 }
 

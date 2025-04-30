@@ -32,7 +32,8 @@ function InputController({
   // --- Rendu JSX ---
   return (
     <div>
-      {/* Zone pour coller le texte */}
+      {/* Zone pour coller le texte - SUPPRIMÉE */}
+      {/* 
       <div>
         <label htmlFor="text-input">Coller votre texte ici :</label>
         <br />
@@ -45,12 +46,14 @@ function InputController({
           placeholder="Entrez ou collez votre long texte ici..."
         />
       </div>
-
-      <hr style={{ margin: '20px 0' }} /> {/* Séparateur */}
+      */}
+      
+      {/* Premier séparateur <hr> - SUPPRIMÉ */}
+      {/* <hr style={{ margin: '20px 0' }} /> */}
 
       {/* Zone pour uploader le PDF */}
       <div>
-        <label htmlFor="pdf-input">Ou uploader un fichier PDF (max 15Mo) :</label>
+        <label htmlFor="pdf-input">Uploader un fichier PDF (max 15Mo) :</label> {/* Texte légèrement modifié */}
         <br />
         <input
           type="file"
@@ -61,7 +64,7 @@ function InputController({
         />
       </div>
 
-      <hr style={{ margin: '20px 0' }} /> {/* Séparateur */}
+      <hr style={{ margin: '20px 0' }} /> {/* Garde le second séparateur */}
 
       {/* Bouton pour lancer la génération */}
       <button
