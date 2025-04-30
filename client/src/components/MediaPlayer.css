@@ -27,10 +27,9 @@
   background-color: rgba(0, 0, 0, 0.75);
   color: white;
   padding: 10px 15px;
-  border-radius: 8px;
+  border-radius: 6px;
   font-size: 1.8em; /* Taille de base */
   font-weight: bold;
-  font-family: Arial, Helvetica, sans-serif;
   text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.9);
   max-height: 150px;
   overflow-y: auto;
@@ -60,14 +59,16 @@
   left: 0;
   width: 100%;
   background-image: linear-gradient(to top, rgba(0,0,0,0.8), rgba(0,0,0,0));
-  padding: 10px 15px;
+  padding: 6px 10px; 
   box-sizing: border-box;
   display: flex;
   align-items: center;
-  gap: 10px; /* Espace entre éléments */
+  justify-content: space-between; /* <<< Sépare les 3 groupes */
+  gap: 10px; /* Espace ENTRE les groupes */
   z-index: 20;
-  opacity: 0; /* Caché par défaut */
+  opacity: 0; 
   transition: opacity 0.3s ease-in-out;
+  pointer-events: none; 
 }
 
 /* Affiche la barre au survol OU si le menu vitesse est ouvert OU si l'audio est en pause */
@@ -75,15 +76,17 @@
 .player-container:focus-within .controls-bar,
 .player-container .controls-bar.visible-when-paused { /* Classe ajoutée si isPlaying est false */
   opacity: 1;
+  pointer-events: auto; /* <<< AJOUT: Intercepte les clics quand visible */
 }
 
 .control-button {
   background: none;
   border: none;
   color: white;
-  font-size: 1.4em;
+  font-size: 1.1em;
   cursor: pointer;
-  padding: 5px;
+  padding: 3px;
+  flex-shrink: 0; 
   line-height: 1;
   opacity: 0.85;
   transition: opacity 0.2s ease;
@@ -91,39 +94,53 @@
 .control-button:hover {
   opacity: 1;
 }
-.control-button span {
-    font-size: 0.7em;
-    vertical-align: middle;
-    margin-left: 5px;
-    color: white; /* Assure la visibilité */
-    display: inline-block; /* Pour le layout */
+
+/* Styles pour les nouveaux groupes */
+.controls-left,
+.controls-right {
+  display: flex;
+  align-items: center;
+  gap: 4px; /* Gardons l'espacement réduit entre éléments */
+  flex-shrink: 0; 
+  padding-right: 15px; /* <<< AJOUT: Décale le groupe vers la gauche */
+  /* border: 1px solid red; */ /* <<< DEBUG RETIRÉ */
+}
+
+.controls-center {
+  flex-grow: 1; 
+  display: flex; 
+  align-items: center;
+  min-width: 50px; 
+  /* border: 1px solid lime; */ /* <<< DEBUG RETIRÉ */
 }
 
 /* Affichage du temps */
 .time-display {
   color: white;
-  font-size: 0.85em;
-  min-width: 45px;
+  font-size: 0.8em;
+  min-width: 35px;
+  margin: 0; /* Plus besoin de marge individuelle */
   text-align: center;
   text-shadow: 1px 1px 2px rgba(0,0,0,0.7);
-  margin: 0 5px; /* Ajoute un peu d'espace */
+  flex-shrink: 0; 
 }
 
 /* Barre de progression */
 .progress-bar-container {
-  flex-grow: 1;
-  height: 8px; /* Augmente un peu la zone cliquable */
+  width: 100%; /* Essaie de prendre la largeur du parent */
+  max-width: 75%; /* <<< LIMITATION EXPLICITE */
+  height: 8px;
   background-color: rgba(255, 255, 255, 0.3);
-  border-radius: 4px;
+  border-radius: 6px;
   cursor: pointer;
-  position: relative;
-  margin: 0 5px; /* Ajoute un peu d'espace */
-  overflow: hidden; /* Pour le border-radius du fill */
+  margin: 0; /* Plus besoin de marge individuelle */
+  overflow: hidden;
+  /* min-width est sur le parent .controls-center maintenant */
 }
 .progress-bar-fill {
   height: 100%;
   background-color: #eee;
-  border-radius: 4px;
+  border-radius: 6px;
   /* transition: width 0.1s linear; // On évite pour la fluidité du seek */
 }
 
@@ -135,7 +152,7 @@
   transform: translateX(-50%);
   background-color: rgba(40, 40, 40, 0.95);
   border: 1px solid #555;
-  border-radius: 4px;
+  border-radius: 6px;
   box-shadow: 0 2px 5px rgba(0,0,0,0.2);
   z-index: 30;
   min-width: 70px;
@@ -210,3 +227,206 @@
  .player-container.fullscreen-active .speed-menu {
      bottom: 120%; /* S'assure qu'il est au-dessus de la barre plus haute */
  }
+
+/* --- AJOUT: Styles pour les contrôles de volume --- */
+.volume-controls-container {
+  display: flex;
+  align-items: center;
+  gap: 4px; /* <<< RÉDUIT de 8px à 4px */
+  flex-shrink: 0; 
+}
+
+.volume-control {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.volume-icon {
+  /* Hérite de .control-button mais on peut ajuster */
+  padding: 3px 4px; /* MODIFIÉ: Ajuste padding spécifique */
+}
+
+.volume-control svg {
+  font-size: 1.2em; /* Taille de l'icône */
+  opacity: 0.85;
+}
+
+.volume-slider {
+  width: 70px; /* Largeur du slider */
+  height: 5px;
+  cursor: pointer;
+  appearance: none; /* Enlever le style par défaut */
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 6px;
+  outline: none;
+}
+
+/* Style du curseur du slider (Chrome, Edge, Safari) */
+.volume-slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  background: white;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+/* Style du curseur du slider (Firefox) */
+.volume-slider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  background: white;
+  border-radius: 50%;
+  cursor: pointer;
+  border: none; /* Important pour Firefox */
+}
+
+/* --- Styles pour le Mode Plein Écran (via classe JS) --- */
+/* Ajuster les styles volume en plein écran */
+.player-container.fullscreen-active .volume-controls-container {
+    gap: 25px;
+    margin-right: 20px;
+}
+.player-container.fullscreen-active .volume-control svg {
+    font-size: 1.8em;
+}
+.player-container.fullscreen-active .volume-slider {
+    width: 100px;
+    height: 8px;
+}
+.player-container.fullscreen-active .volume-slider::-webkit-slider-thumb {
+    width: 16px;
+    height: 16px;
+}
+.player-container.fullscreen-active .volume-slider::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+}
+
+/* Wrapper pour chaque contrôle icône + slider */
+.volume-control-wrapper {
+  position: relative; /* Pour positionner le slider au-dessus */
+  display: flex;      /* Aligner l'icône */
+  align-items: center;
+}
+
+/* Rendre l'icône comme un bouton */
+.icon-button {
+  padding: 5px; /* Assurer une zone cliquable */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Conteneur pour le slider vertical, positionné au-dessus */
+.volume-slider-container.vertical {
+  position: absolute;
+  bottom: 120%; /* Placer au-dessus de l'icône */
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: rgba(40, 40, 40, 0.95); /* Fond similaire au menu vitesse */
+  padding: 15px 8px; /* Espace autour du slider */
+  border-radius: 6px;
+  box-shadow: 0 -2px 5px rgba(0,0,0,0.2);
+  z-index: 30;
+}
+
+.volume-slider.slider-vertical {
+  position: absolute;
+  bottom: 120%; /* Position au-dessus du bouton */
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(40, 40, 40, 0.95);
+  padding: 10px 5px;
+  border-radius: 6px;
+  writing-mode: bt-lr; /* Bottom to top */
+  -webkit-appearance: slider-vertical;
+  width: 8px;
+  height: 100px;
+  cursor: pointer;
+}
+
+/* Styles des curseurs pour le slider vertical (peuvent nécessiter ajustements) */
+.volume-slider.slider-vertical::-webkit-slider-thumb {
+  appearance: none;
+  width: 16px;  /* Plus large pour être cliquable */
+  height: 16px; /* Plus haut */
+  background: white;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.volume-slider.slider-vertical::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  background: white;
+  border-radius: 50%;
+  cursor: pointer;
+  border: none;
+}
+
+/* Ajuster les styles volume en plein écran */
+.player-container.fullscreen-active .volume-control-wrapper {
+    /* Peut-être pas de changement nécessaire ici */
+}
+.player-container.fullscreen-active .volume-slider-container.vertical {
+    /* Ajuster la position si besoin en plein écran */
+    bottom: 130%; 
+    padding: 20px 10px;
+}
+.player-container.fullscreen-active .volume-slider.slider-vertical {
+    height: 120px; /* Un peu plus grand */
+}
+/* Les styles de thumb peuvent rester les mêmes ou être agrandis aussi */
+.player-container.fullscreen-active .icon-button svg { /* Style hérité des .control-button */
+    font-size: 1.8em; /* Assurer que l'icône est grande aussi */
+}
+
+/* Bouton Plein Ecran */
+.controls-bar .controls-right > .control-button:last-child {
+  /* Plus besoin de règles spécifiques, il est dans le flux normal du groupe droit */
+  margin: 0;
+}
+
+/* --- Media Query --- */
+@media (max-width: 768px) {
+  .controls-left,
+  .controls-right {
+     gap: 5px; 
+     padding-right: 5px; /* Réduire aussi le padding droit */
+     /* border: 1px dashed red; */ /* <<< DEBUG RETIRÉ */
+  }
+  .controls-center {
+    /* border: 1px dashed lime; */ /* <<< DEBUG RETIRÉ */
+  }
+  
+  /* MODIFIÉ: Cacher les DEUX indicateurs de temps */
+  .controls-left > .time-display,
+  .controls-right > .time-display {
+    display: none; 
+  }
+  .progress-bar-container {
+     min-width: 30px;
+     margin: 0 5px; 
+     max-width: 65%; /* <<< Limitation encore plus forte sur petit écran */
+  }
+  .volume-controls-container .volume-control-wrapper:has(.fa-music) { /* Sélecteur plus robuste */
+    display: none; 
+  }
+  .controls-bar {
+    gap: 5px; 
+    padding: 5px 6px;
+  }
+  .control-button {
+    font-size: 1em; /* CHANGÉ: Taille normale ou légèrement réduite */
+  }
+  /* AJOUT: Réduire la taille du texte overlay */
+  .text-overlay {
+    font-size: 1.2em; /* Ajuster si nécessaire */
+    bottom: 70px; /* Remonter un peu si la barre de contrôle est plus petite */
+    padding: 5px 8px;
+    max-height: 100px;
+  }
+}
