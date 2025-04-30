@@ -210,3 +210,153 @@
  .player-container.fullscreen-active .speed-menu {
      bottom: 120%; /* S'assure qu'il est au-dessus de la barre plus haute */
  }
+
+/* --- AJOUT: Styles pour les contrôles de volume --- */
+.volume-controls {
+  display: flex; /* Aligner les contrôles côte à côte */
+  align-items: center;
+  gap: 15px; /* Espace entre les deux sliders */
+  margin-left: auto; /* Pousser les contrôles vers la droite */
+  margin-right: 10px; /* Espace avant le sélecteur de vitesse */
+}
+
+.volume-control {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: white;
+}
+
+.volume-control svg {
+  font-size: 1.2em; /* Taille de l'icône */
+  opacity: 0.85;
+}
+
+.volume-slider {
+  width: 70px; /* Largeur du slider */
+  height: 5px;
+  cursor: pointer;
+  appearance: none; /* Enlever le style par défaut */
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 3px;
+  outline: none;
+}
+
+/* Style du curseur du slider (Chrome, Edge, Safari) */
+.volume-slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  background: white;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+/* Style du curseur du slider (Firefox) */
+.volume-slider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  background: white;
+  border-radius: 50%;
+  cursor: pointer;
+  border: none; /* Important pour Firefox */
+}
+
+/* --- Styles pour le Mode Plein Écran (via classe JS) --- */
+/* Ajuster les styles volume en plein écran */
+.player-container.fullscreen-active .volume-controls {
+    gap: 25px;
+    margin-right: 20px;
+}
+.player-container.fullscreen-active .volume-control svg {
+    font-size: 1.8em;
+}
+.player-container.fullscreen-active .volume-slider {
+    width: 100px;
+    height: 8px;
+}
+.player-container.fullscreen-active .volume-slider::-webkit-slider-thumb {
+    width: 16px;
+    height: 16px;
+}
+.player-container.fullscreen-active .volume-slider::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+}
+
+/* Wrapper pour chaque contrôle icône + slider */
+.volume-control-wrapper {
+  position: relative; /* Pour positionner le slider au-dessus */
+  display: flex;      /* Aligner l'icône */
+  align-items: center;
+}
+
+/* Rendre l'icône comme un bouton */
+.icon-button {
+  padding: 5px; /* Assurer une zone cliquable */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Conteneur pour le slider vertical, positionné au-dessus */
+.volume-slider-container.vertical {
+  position: absolute;
+  bottom: 120%; /* Placer au-dessus de l'icône */
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: rgba(40, 40, 40, 0.95); /* Fond similaire au menu vitesse */
+  padding: 15px 8px; /* Espace autour du slider */
+  border-radius: 5px;
+  box-shadow: 0 -2px 5px rgba(0,0,0,0.2);
+  z-index: 30;
+}
+
+.volume-slider.vertical {
+  appearance: slider-vertical; /* Essayer d'abord ça */
+  writing-mode: bt-lr; /* bottom-to-top, left-to-right (standard pour vertical) */
+  width: 8px;   /* Largeur du slider vertical */
+  height: 100px; /* Hauteur du slider vertical */
+  padding: 0 5px; /* Pour l'espacement du curseur */
+  /* Réutiliser les styles de base du slider horizontal si nécessaire */
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 3px;
+  outline: none;
+}
+
+/* Styles des curseurs pour le slider vertical (peuvent nécessiter ajustements) */
+.volume-slider.vertical::-webkit-slider-thumb {
+  appearance: none;
+  width: 16px;  /* Plus large pour être cliquable */
+  height: 16px; /* Plus haut */
+  background: white;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.volume-slider.vertical::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  background: white;
+  border-radius: 50%;
+  cursor: pointer;
+  border: none;
+}
+
+/* Ajuster les styles volume en plein écran */
+.player-container.fullscreen-active .volume-control-wrapper {
+    /* Peut-être pas de changement nécessaire ici */
+}
+.player-container.fullscreen-active .volume-slider-container.vertical {
+    /* Ajuster la position si besoin en plein écran */
+    bottom: 130%; 
+    padding: 20px 10px;
+}
+.player-container.fullscreen-active .volume-slider.vertical {
+    height: 120px; /* Un peu plus grand */
+}
+/* Les styles de thumb peuvent rester les mêmes ou être agrandis aussi */
+.player-container.fullscreen-active .icon-button svg { /* Style hérité des .control-button */
+    font-size: 1.8em; /* Assurer que l'icône est grande aussi */
+}

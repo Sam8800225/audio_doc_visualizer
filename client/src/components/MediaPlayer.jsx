@@ -1,6 +1,7 @@
 // client/src/components/MediaPlayer.jsx
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { FaExpand, FaCompress, FaPlay, FaPause, FaGaugeHigh } from "react-icons/fa6";
+import { FaExpand, FaCompress, FaPlay, FaPause, FaGaugeHigh, FaMusic } from "react-icons/fa6";
+import { FaVolumeUp } from "react-icons/fa";
 import './MediaPlayer.css'; // Import du fichier CSS
 
 // --- Fonction Helper pour traiter l'alignement ---
@@ -44,9 +45,10 @@ const formatTime = (timeInSeconds) => {
 
 
 // --- Composant MediaPlayer ---
-function MediaPlayer({ audioUrl, videoUrl, text, alignment }) {
+function MediaPlayer({ audioUrl, videoUrl, musicUrl, text, alignment }) {
   // Refs
   const audioRef = useRef(null);
+  const musicRef = useRef(null);
   const videoRef = useRef(null);
   const playerContainerRef = useRef(null);
   const progressBarRef = useRef(null); // Ref pour la barre de progression
@@ -67,26 +69,28 @@ function MediaPlayer({ audioUrl, videoUrl, text, alignment }) {
   const [isSpeedMenuOpen, setIsSpeedMenuOpen] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
+  const [voiceVolume, setVoiceVolume] = useState(1);
+  const [musicVolume, setMusicVolume] = useState(0.3);
+  const [isVoiceSliderVisible, setIsVoiceSliderVisible] = useState(false);
+  const [isMusicSliderVisible, setIsMusicSliderVisible] = useState(false);
 
 
   // --- Effets ---
 
   // Effet 1: Traiter l'alignement + Reset états liés à l'audio
   useEffect(() => {
-    if (alignment && audioUrl) { // Attend aussi audioUrl pour être sûr
-      // console.log("Effet 1: Traitement alignement & Reset...");
+    if (alignment && audioUrl) {
       const processedTimings = processAlignmentToWords(alignment);
       setWordTimings(processedTimings);
       setActiveWordIndex(-1);
-      setCurrentTime(0); // Reset temps affiché
-      setPlaybackSpeed(1.0); // Reset vitesse
+      setCurrentTime(0);
+      setPlaybackSpeed(1.0);
       if (audioRef.current) {
           audioRef.current.playbackRate = 1.0;
-          audioRef.current.currentTime = 0; // Reset temps audio réel
+          audioRef.current.currentTime = 0;
       }
       if (videoRef.current) {
           videoRef.current.playbackRate = 1.0;
-          // Le videoStartTime sera recalculé par l'effet 2
       }
     } else {
       setWordTimings([]);
@@ -96,54 +100,43 @@ function MediaPlayer({ audioUrl, videoUrl, text, alignment }) {
       setCurrentTime(0);
       setPlaybackSpeed(1.0);
       setAudioDuration(0);
-      // setVideoStartTime(0); // Gardé par l'effet 2
     }
-  }, [alignment, audioUrl]); // Dépend d'alignment ET audioUrl pour reset complet
+  }, [alignment, audioUrl]);
 
   // Effet 2: Calculer le videoStartTime aléatoire
   useEffect(() => {
     if (audioDuration > 0 && videoDuration > 0) {
-      // console.log(`Effect 2: Calculating StartTime...`);
       const maxStartTime = Math.max(0, videoDuration - audioDuration);
       const randomStartTime = Math.random() * maxStartTime;
-      // console.log(`Effect 2: randomStartTime=${randomStartTime}`);
       setVideoStartTime(randomStartTime);
 
       if (videoRef.current) {
-        // console.log(`Effect 2: Setting initial video currentTime to ${randomStartTime}`);
         videoRef.current.currentTime = randomStartTime;
       }
     } else {
-         setVideoStartTime(0); // Reset si les durées ne sont pas valides
+         setVideoStartTime(0);
     }
   }, [audioDuration, videoDuration]);
 
   // --- Effet pour mettre à jour la LIGNE de mots affichée ---
   useEffect(() => {
-    // Si les timings ne sont pas prêts, on vide et on sort.
     if (!wordTimings || wordTimings.length === 0) {
-      if (currentLineWords.length > 0) setCurrentLineWords([]); // Vide si ce n'était pas vide
+      if (currentLineWords.length > 0) setCurrentLineWords([]);
       if (currentLineStartIndex !== 0) setCurrentLineStartIndex(0);
       return;
     }
 
-    // Si l'audio ne joue PAS ET que l'index actif est -1 (vraiment à l'arrêt/fini)
     if (!isPlaying && activeWordIndex === -1) {
         if (currentLineWords.length > 0) {
             console.log("Effect 3: Playback stopped/ended, clearing words.");
             setCurrentLineWords([]);
-            // setCurrentLineStartIndex(0); // Optionnel : reset ou garder le dernier ? Gardons pour l'instant.
         }
-        return; // On sort, on n'affiche rien
+        return;
     }
 
-    // Si on a un index actif (ou si on joue encore même si l'index est -1 entre les mots)
     if (activeWordIndex !== -1) {
-      // Calcule l'index de début de la ligne de 4 qui CONTIENT le mot actif
       const targetLineStartIndex = Math.floor(activeWordIndex / 4) * 4;
 
-      // Change la ligne affichée SEULEMENT si le début de ligne cible est différent
-      // OU si la ligne actuelle est vide (cas initial)
       if (targetLineStartIndex !== currentLineStartIndex || currentLineWords.length === 0) {
         console.log(`Effect 3: Updating displayed line. activeIndex=${activeWordIndex}, new line starts at ${targetLineStartIndex}`);
         const endIndex = Math.min(targetLineStartIndex + 4, wordTimings.length);
@@ -151,15 +144,8 @@ function MediaPlayer({ audioUrl, videoUrl, text, alignment }) {
         setCurrentLineWords(newLineWords);
         setCurrentLineStartIndex(targetLineStartIndex);
       }
-      // Si targetLineStartIndex === currentLineStartIndex, on ne touche pas à currentLineWords.
-      // Le surlignage dans le JSX se basera sur activeWordIndex pour changer le mot en jaune.
-
     }
-    // Si activeWordIndex est -1 MAIS isPlaying est TRUE (on est dans une pause entre mots),
-    // on ne fait rien ici, currentLineWords garde sa valeur précédente.
-
-  // Dépendances : index actif, les timings calculés, et l'état de lecture
-  }, [activeWordIndex, wordTimings, currentLineStartIndex, isPlaying]); // isPlaying ajouté
+  }, [activeWordIndex, wordTimings, currentLineStartIndex, isPlaying]);
 
 
   // Effet 4: Nettoyage de l'URL Blob (avec Ref)
@@ -180,19 +166,32 @@ function MediaPlayer({ audioUrl, videoUrl, text, alignment }) {
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
   }, []);
 
+  // AJOUT: Effet 6: Appliquer les volumes quand ils changent
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.volume = voiceVolume;
+    }
+  }, [voiceVolume]);
+
+  useEffect(() => {
+    if (musicRef.current) {
+      musicRef.current.volume = musicVolume;
+    }
+  }, [musicVolume]);
+
 
   // --- Fonctions Handler ---
 
   // Mise à jour de l'Index et du temps actuel (throttled)
   const handleTimeUpdate = useCallback(() => {
     const now = Date.now();
-    if (now - lastUpdateTimeRef.current < throttleDelay) return; // Throttle
+    if (now - lastUpdateTimeRef.current < throttleDelay) return;
     lastUpdateTimeRef.current = now;
 
     if (!audioRef.current || !wordTimings || wordTimings.length === 0 || !isPlaying) return;
 
     const currentAudioTime = audioRef.current.currentTime;
-    setCurrentTime(currentAudioTime); // Met à jour l'état du temps affiché
+    setCurrentTime(currentAudioTime);
 
     let foundWordIndex = -1;
     for (let i = 0; i < wordTimings.length; i++) {
@@ -203,38 +202,47 @@ function MediaPlayer({ audioUrl, videoUrl, text, alignment }) {
     }
 
     if (foundWordIndex === -1 && wordTimings.length > 0 && currentAudioTime >= wordTimings[wordTimings.length - 1].endTime) {
-        foundWordIndex = -1; // Dépassé la fin
+        foundWordIndex = -1;
     }
 
-    // Met à jour l'index actif seulement s'il change ET s'il est valide
     if (foundWordIndex !== activeWordIndex ) {
-       // console.log(`handleTimeUpdate: currentTime=${currentAudioTime.toFixed(2)}, new activeWordIndex=${foundWordIndex}`);
        setActiveWordIndex(foundWordIndex);
     }
 
-    // Rembobine la vidéo
     if (videoRef.current && audioDuration > 0 && videoStartTime >= 0 && videoRef.current.currentTime >= (videoStartTime + audioDuration)) {
        videoRef.current.currentTime = videoStartTime;
        if (isPlaying) { videoRef.current.play().catch(e => console.error("Video replay error on loop:", e)); }
     }
-  }, [wordTimings, activeWordIndex, audioDuration, videoStartTime, isPlaying]); // isPlaying ajouté
+
+    if (musicRef.current && audioDuration > 0 && musicRef.current.currentTime >= audioDuration) {
+        musicRef.current.currentTime = 0;
+        if (isPlaying) { musicRef.current.play().catch(e => console.error("Music replay error on loop:", e)); }
+    }
+  }, [wordTimings, activeWordIndex, audioDuration, videoStartTime, isPlaying]);
 
   // Play/Pause synchronisé
   const togglePlayPause = () => {
-    if (!audioRef.current || !videoRef.current || audioDuration === 0) return; // Ne rien faire si pas prêt
+    if (!audioRef.current || !videoRef.current || audioDuration === 0) return;
     const newIsPlaying = !isPlaying;
     if (newIsPlaying) {
-      // console.log(`togglePlayPause: Play clicked. Video starts at ${videoStartTime}`);
-      if (videoRef.current) { videoRef.current.currentTime = videoStartTime; }
-      Promise.all([audioRef.current.play(), videoRef.current.play()])
-        .then(() => { /*console.log("Play command succeeded")*/; }) // Pas besoin de setIsPlaying ici
+      if (musicRef.current && musicRef.current.paused) {
+          musicRef.current.currentTime = 0;
+      }
+      const playPromises = [audioRef.current.play(), videoRef.current.play()];
+      if (musicRef.current) {
+          playPromises.push(musicRef.current.play());
+      }
+      Promise.all(playPromises)
+        .then(() => { /* Play OK */ })
         .catch(error => { console.error("Erreur lecture:", error); setIsPlaying(false); });
     } else {
       audioRef.current.pause();
       videoRef.current.pause();
-      // console.log("Pause");
+      if (musicRef.current) {
+          musicRef.current.pause();
+      }
     }
-     setIsPlaying(newIsPlaying); // Met à jour l'état dans tous les cas (le catch corrigera si besoin)
+     setIsPlaying(newIsPlaying);
   };
 
   // Changement de vitesse
@@ -243,18 +251,16 @@ function MediaPlayer({ audioUrl, videoUrl, text, alignment }) {
      if (videoRef.current) videoRef.current.playbackRate = newSpeed;
      setPlaybackSpeed(newSpeed);
      setIsSpeedMenuOpen(false);
-     // console.log(`Playback speed set to: ${newSpeed}x`);
   };
 
   // Gestion de la fin de l'audio
   const handleAudioEnd = () => {
-      console.log("***** AUDIO ONENDED EVENT FIRED *****");
+      console.log("Audio TTS terminé.");
       setIsPlaying(false);
       setActiveWordIndex(-1);
-      if (videoRef.current) {
-        videoRef.current.pause();
-        videoRef.current.currentTime = videoStartTime;
-      }
+      setCurrentTime(audioDuration);
+      if (videoRef.current) videoRef.current.pause();
+      if (musicRef.current) musicRef.current.pause();
   };
 
   // Gestion clic sur barre de progression (Seek)
@@ -264,17 +270,25 @@ function MediaPlayer({ audioUrl, videoUrl, text, alignment }) {
      const clickPositionInBar = event.clientX - progressBarRect.left;
      const clickPercent = Math.max(0, Math.min(1, clickPositionInBar / progressBarRect.width));
      const targetAudioTime = clickPercent * audioDuration;
-     // console.log(`Seek: Target audio time: ${targetAudioTime.toFixed(2)}`);
 
-     // Applique le nouveau temps et met à jour l'état
      audioRef.current.currentTime = targetAudioTime;
-     setCurrentTime(targetAudioTime); // Met à jour l'affichage
+     setCurrentTime(targetAudioTime);
 
-     // Applique à la vidéo avec décalage
      const targetVideoTime = Math.min(videoDuration, videoStartTime + targetAudioTime);
      videoRef.current.currentTime = targetVideoTime;
 
-     // Force la reprise si on était en pause ? Non, l'utilisateur recliquera play si besoin.
+     if (musicRef.current && isFinite(targetAudioTime)) {
+        musicRef.current.currentTime = targetAudioTime;
+     }
+
+     let foundWordIndex = -1;
+     for (let i = 0; i < wordTimings.length; i++) {
+       if (wordTimings[i].startTime <= targetAudioTime && wordTimings[i].endTime > targetAudioTime) {
+         foundWordIndex = i;
+         break;
+       }
+     }
+     setActiveWordIndex(foundWordIndex);
   };
 
    // Gestion Fullscreen
@@ -291,6 +305,28 @@ function MediaPlayer({ audioUrl, videoUrl, text, alignment }) {
   const handleAudioMetadata = () => { if (audioRef.current) { const d = audioRef.current.duration; if(d && isFinite(d)) setAudioDuration(d); else setAudioDuration(0); } }
   const handleVideoMetadata = () => { if (videoRef.current) { const d = videoRef.current.duration; if(d && isFinite(d)) setVideoDuration(d); else setVideoDuration(0); } }
 
+  // AJOUT: Handlers pour les volumes
+  const handleVoiceVolumeChange = (event) => {
+    const newVolume = parseFloat(event.target.value);
+    setVoiceVolume(newVolume);
+  };
+
+  const handleMusicVolumeChange = (event) => {
+    const newVolume = parseFloat(event.target.value);
+    setMusicVolume(newVolume);
+  };
+
+  // AJOUT: Handlers pour basculer la visibilité des sliders
+  const toggleVoiceSlider = () => {
+    setIsVoiceSliderVisible(!isVoiceSliderVisible);
+    setIsMusicSliderVisible(false); // Cacher l'autre slider
+  };
+
+  const toggleMusicSlider = () => {
+    setIsMusicSliderVisible(!isMusicSliderVisible);
+    setIsVoiceSliderVisible(false); // Cacher l'autre slider
+  };
+
 
   // --- Rendu JSX ---
   return (
@@ -302,7 +338,7 @@ function MediaPlayer({ audioUrl, videoUrl, text, alignment }) {
         ref={videoRef}
         src={videoUrl}
         muted playsInline
-        onClick={togglePlayPause} // Clic sur vidéo = Play/Pause
+        onClick={togglePlayPause}
         onLoadedMetadata={handleVideoMetadata}
         style={{ display: 'block', width: '100%', height: 'auto', cursor:'pointer' }}
        />
@@ -340,6 +376,53 @@ function MediaPlayer({ audioUrl, videoUrl, text, alignment }) {
            </div>
            <span className="time-display">{formatTime(audioDuration)}</span>
 
+           {/* AJOUT: Contrôles de Volume (Structure modifiée) */} 
+           <div className="volume-controls">
+             {/* Volume Voix */} 
+             <div className="volume-control-wrapper">
+               <button onClick={toggleVoiceSlider} className="control-button icon-button" title="Volume Voix">
+                 <FaVolumeUp />
+               </button>
+               {isVoiceSliderVisible && (
+                 <div className="volume-slider-container vertical">
+                   <input
+                     type="range"
+                     min="0"
+                     max="1"
+                     step="0.05"
+                     value={voiceVolume}
+                     onChange={handleVoiceVolumeChange}
+                     className="volume-slider vertical"
+                     orient="vertical"
+                   />
+                 </div>
+               )}
+             </div>
+
+             {/* Volume Musique (seulement si musique présente) */} 
+             {musicUrl && (
+               <div className="volume-control-wrapper">
+                  <button onClick={toggleMusicSlider} className="control-button icon-button" title="Volume Musique">
+                     <FaMusic />
+                  </button>
+                  {isMusicSliderVisible && (
+                     <div className="volume-slider-container vertical">
+                         <input
+                         type="range"
+                         min="0"
+                         max="1"
+                         step="0.05"
+                         value={musicVolume}
+                         onChange={handleMusicVolumeChange}
+                         className="volume-slider vertical"
+                         orient="vertical"
+                         />
+                     </div>
+                  )}
+               </div>
+             )}
+           </div>
+
            {/* Contrôle de Vitesse */}
            <div style={{ position: 'relative', display: 'inline-block' }}>
                <button onClick={() => setIsSpeedMenuOpen(!isSpeedMenuOpen)} className="control-button" title="Vitesse">
@@ -374,6 +457,15 @@ function MediaPlayer({ audioUrl, videoUrl, text, alignment }) {
         onEnded={handleAudioEnd}
         style={{ display: 'none' }}
        />
+
+      {/* AJOUT: Audio Secondaire (Musique de Fond) */} 
+      {musicUrl && (
+          <audio
+            ref={musicRef}
+            src={musicUrl}
+            loop={false}
+          ></audio>
+      )}
 
     </div> // Fin player-container
   );

@@ -14,6 +14,14 @@ const availableVideos = [
   { name: 'Subway Surf', path: '/subway.mp4' } // Assure-toi que le nom 'subway.mp4' est correct
 ];
 
+// AJOUT: Définit les musiques disponibles
+const availableMusic = [
+  { name: 'Aucune', path: '' }, // Option pour ne pas avoir de musique
+  { name: 'Classique', path: '/classique.mp3' },
+  { name: 'Relaxante', path: '/relax.mp3' },
+  { name: 'Épique', path: '/epic.mp3' },
+];
+
 function App() {
   // --- États de l'application ---
   const [inputFile, setInputFile] = useState(null); // Stocke le fichier PDF sélectionné (objet File)
@@ -22,7 +30,10 @@ function App() {
   const [errorMessage, setErrorMessage] = useState('');
   const [audioResult, setAudioResult] = useState(null);
   const [selectedVideoPath, setSelectedVideoPath] = useState('/satisfying_video.mp4'); // Default Minecraft
-  const [isVideoModalOpen, setIsVideoModalOpen] = useState(false); // Ajoute cet état avec les autres useState
+  const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
+  // AJOUT: États pour la musique
+  const [selectedMusicPath, setSelectedMusicPath] = useState(''); // Défaut: Aucune
+  const [isMusicModalOpen, setIsMusicModalOpen] = useState(false);
 
   // --- Fonctions (handlers, appel API) viendront ici ---
 
@@ -164,25 +175,34 @@ function App() {
 
   // Fonction pour ouvrir la modale de choix vidéo
   const openVideoModal = () => {
-    // Vérifie si on a du texte ou un fichier AVANT d'ouvrir la modale
     if (!inputFile && !inputText.trim()) {
        setErrorMessage('Veuillez fournir un fichier PDF ou coller du texte avant de choisir la vidéo.');
-       return; // N'ouvre pas la modale si pas d'input
+       return;
     }
-    setErrorMessage(null); // Efface les erreurs précédentes
-    setIsVideoModalOpen(true); // Ouvre la modale
+    setErrorMessage(null);
+    setIsVideoModalOpen(true); // Ouvre la modale vidéo
   };
 
-  // Fonction appelée quand une vidéo est choisie DANS la modale
-  const selectVideoAndGenerate = (videoPath) => {
+  // MODIFICATION: Fonction appelée quand une vidéo est choisie DANS la modale Vidéo
+  const selectVideoAndOpenMusicModal = (videoPath) => {
     setSelectedVideoPath(videoPath); // Met à jour la vidéo sélectionnée
-    setIsVideoModalOpen(false);     // Ferme la modale
-    handleSubmit();                 // LANCE la génération (l'ancienne fonction qui fait les appels API)
+    setIsVideoModalOpen(false);     // Ferme la modale vidéo
+    setIsMusicModalOpen(true);      // OUVRE la modale musique
   };
 
-  // Fonction pour fermer la modale sans choisir
+  // AJOUT: Fonction appelée quand une musique est choisie DANS la modale Musique
+  const selectMusicAndGenerate = (musicPath) => {
+    setSelectedMusicPath(musicPath); // Met à jour la musique sélectionnée
+    setIsMusicModalOpen(false);   // Ferme la modale musique
+    handleSubmit();               // LANCE ENFIN la génération
+  };
+
+  // Fonctions pour fermer les modales sans choisir
   const closeVideoModal = () => {
     setIsVideoModalOpen(false);
+  };
+  const closeMusicModal = () => {
+    setIsMusicModalOpen(false);
   };
 
   return (
@@ -203,30 +223,27 @@ function App() {
       {/* Affiche le message d'erreur si errorMessage n'est pas vide */}
       {errorMessage && <ErrorMessage message={errorMessage} />}
 
-      {/* --- Début de la Fenêtre Modale (affichée conditionnellement) --- */}
+      {/* --- Modale Vidéo (Modifiée pour appeler selectVideoAndOpenMusicModal) --- */}
       {isVideoModalOpen && (
-        // Fond semi-transparent
         <div style={{
           position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
           backgroundColor: 'rgba(0, 0, 0, 0.6)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          zIndex: 50 // Pour être au-dessus de tout
+          zIndex: 50
         }}>
-          {/* Boîte de la modale */}
           <div style={{
             backgroundColor: 'white', padding: '30px', borderRadius: '8px',
             textAlign: 'center', boxShadow: '0 5px 15px rgba(0,0,0,0.3)'
           }}>
             <h3>Choisir la vidéo de fond :</h3>
             <div style={{ margin: '20px 0', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {/* Crée un bouton pour chaque vidéo disponible */}
               {availableVideos.map((video) => (
                 <button
                   key={video.path}
-                  onClick={() => selectVideoAndGenerate(video.path)} // Appelle la fonction de sélection + génération
+                  onClick={() => selectVideoAndOpenMusicModal(video.path)} // MODIFIÉ ICI
                   style={{ padding: '10px 20px', fontSize: '1em', cursor: 'pointer' }}
                 >
-                  {video.name} {/* Affiche le nom de la vidéo */}
+                  {video.name}
                 </button>
               ))}
             </div>
@@ -236,15 +253,52 @@ function App() {
           </div>
         </div>
       )}
-      {/* --- Fin de la Fenêtre Modale --- */}
+
+      {/* --- AJOUT: Modale Musique --- */}
+      {isMusicModalOpen && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.6)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 60 // zIndex plus élevé pour être au-dessus de la modale vidéo si jamais elle restait visible
+        }}>
+          <div style={{
+            backgroundColor: 'white', padding: '30px', borderRadius: '8px',
+            textAlign: 'center', boxShadow: '0 5px 15px rgba(0,0,0,0.3)'
+          }}>
+            <h3>Choisir la musique de fond :</h3>
+            <div style={{ margin: '20px 0', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {availableMusic.map((music) => (
+                <button
+                  key={music.path || 'none'} // Clé unique même si path est vide
+                  onClick={() => selectMusicAndGenerate(music.path)}
+                  style={{
+                    padding: '10px 20px', 
+                    fontSize: '1em', 
+                    cursor: 'pointer',
+                    // Optionnel: Mettre en gras la sélection actuelle
+                    fontWeight: selectedMusicPath === music.path ? 'bold' : 'normal'
+                  }}
+                >
+                  {music.name}
+                </button>
+              ))}
+            </div>
+            <button onClick={closeMusicModal} style={{ marginTop: '10px', fontSize: '0.9em' }}>
+              Annuler
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Affiche MediaPlayer SEULEMENT si audioResult existe */}
       {audioResult && selectedVideoPath && (
         <MediaPlayer
-          audioUrl={audioResult.audioUrl}     // URL du blob audio
-          alignment={audioResult.alignment}   // Données de timestamp
-          text={audioResult.originalText}     // Le texte original (simplifié pour l'instant)
-          videoUrl={selectedVideoPath} // <<< Utilise l'état qui contient le chemin choisi (ou le défaut)
+          audioUrl={audioResult.audioUrl}
+          alignment={audioResult.alignment}
+          text={audioResult.originalText}
+          videoUrl={selectedVideoPath}
+          musicUrl={selectedMusicPath} // <<< AJOUT DE LA PROP ICI
         />
       )}
 
